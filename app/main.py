@@ -4,4 +4,4 @@ app = FastAPI()
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello, Azure Container Apps!"}
+    return {"message": "Hello, Azure Container Registry and Container Apps!"}
