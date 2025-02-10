@@ -3,7 +3,7 @@ FROM python:3.10
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
-    POETRY_VERSION=2.0.1
+    POETRY_VERSION=1.7.1
 
 # Install Poetry
 RUN pip install "poetry==$POETRY_VERSION"
