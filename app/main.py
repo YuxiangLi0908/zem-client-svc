@@ -1,4 +1,4 @@
-from typing import Union
+import os
 import pandas as pd
 
 from sqlalchemy import text
@@ -21,8 +21,15 @@ app.add_middleware(GZipMiddleware)
 def read_root():
     return {"message": "Hello, Azure Container Registry and Container Apps with Github CI/CD!"}
 
+@app.get("/dbconn")
+def read_root():
+    return {
+        "dbname": os.environ.get("dbname", ""),
+        "dbhost": os.environ.get("dbhost", "")
+    }
+
 @app.get("/dbtest")
-async def read_db():
+def read_db():
     # cursor = conn.cursor()
     # return {"tables": text(cursor.execute("SELECT * FROM information_schema.tables"))}
     # df = pd.read_sql('SELECT * FROM information_schema.tables', con=conn)
