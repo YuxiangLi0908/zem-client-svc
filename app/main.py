@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
-from app.test_db_conn import conn
+# from app.test_db_conn import conn
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -25,13 +25,14 @@ def read_root():
 def read_root():
     return {
         "dbname": os.environ.get("dbname", ""),
-        "dbhost": os.environ.get("dbhost", "")
+        "dbhost": os.environ.get("dbhost", ""),
+        "DBNAME": os.environ.get("DBNAME", ""),
     }
 
-@app.get("/dbtest")
-def read_db():
-    # cursor = conn.cursor()
-    # return {"tables": text(cursor.execute("SELECT * FROM information_schema.tables"))}
-    # df = pd.read_sql('SELECT * FROM information_schema.tables', con=conn)
-    df = pd.read_sql("SELECT * FROM public.warehouse_vessel WHERE vessel_eta > '2025-01-01'", con=conn)
-    return {"tables": df.to_dict()}
+# @app.get("/dbtest")
+# def read_db():
+#     # cursor = conn.cursor()
+#     # return {"tables": text(cursor.execute("SELECT * FROM information_schema.tables"))}
+#     # df = pd.read_sql('SELECT * FROM information_schema.tables', con=conn)
+#     df = pd.read_sql("SELECT * FROM public.warehouse_vessel WHERE vessel_eta > '2025-01-01'", con=conn)
+#     return {"tables": df.to_dict()}
