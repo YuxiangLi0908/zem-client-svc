@@ -34,5 +34,5 @@ def read_root():
 
 @app.get("/dbtest")
 def read_db():
-    df = pd.read_sql("SELECT * FROM public.warehouse_vessel WHERE vessel_eta > '2025-01-01'", con=conn)
+    df = pd.read_sql("SELECT * FROM public.warehouse_vessel WHERE vessel_eta > '2025-01-02'", con=conn)
     return {"tables": df.to_dict()}
