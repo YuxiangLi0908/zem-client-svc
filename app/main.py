@@ -36,3 +36,8 @@ def read_root():
 def read_db():
     df = pd.read_sql("SELECT * FROM public.warehouse_vessel WHERE vessel_eta > '2025-01-02'", con=conn)
     return {"tables": df.to_dict()}
+
+@app.get("/api/data")
+async def get_data():
+    # Simulate fetching data
+    return {"message": "Hello from FastAPI!"}
