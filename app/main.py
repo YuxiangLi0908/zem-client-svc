@@ -21,7 +21,7 @@ app.add_middleware(GZipMiddleware)
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello, Azure Container Registry and Container Apps with Github CI/CD!"}
+    return {"message": "Hello, Azure Container Registry and Container Apps!"}
 
 @app.get("/dbconn")
 def read_root():
