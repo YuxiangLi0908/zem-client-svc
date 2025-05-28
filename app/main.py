@@ -55,6 +55,8 @@ def read_root():
         "DBHOST": os.environ.get("DBHOST", ""),
         "DBPORT": os.environ.get("DBPORT", ""),
         "DBUSER": os.environ.get("DBUSER", ""),
+        "ENV": os.environ.get("env", ""),
+        "ENV_UPPER": os.environ.get("ENV", ""),
     }
 
 
