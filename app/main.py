@@ -1,10 +1,12 @@
 import os
 
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from passlib.context import CryptContext
 
 from app.api.router import api_router
 from app.test_db_conn import conn
@@ -13,9 +15,9 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
 app.add_middleware(GZipMiddleware)
 app.include_router(api_router)
@@ -49,3 +51,35 @@ def read_db():
 async def get_data():
     # Simulate fetching data
     return {"message": "Hello from FastAPI!"}
+
+DATABASE_URL = "postgresql://postgres:Dlmm04121313!@127.0.0.1/zem"
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+from sqlalchemy.orm import Session
+from fastapi import FastAPI, Depends
+from app.data_models.user import User
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.get("/users")
+def read_users(db: Session = Depends(get_db)):
+    return db.query(User).all()
+
+pwd_context = CryptContext(schemes=["django_pbkdf2_sha256"], deprecated="auto")
+
+def verify_password(plain_password: str, hashed_password: str):
+    return pwd_context.verify(plain_password, hashed_password)
+
+@app.post("/test_login")
+def login(username: str, password: str, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.zem_name==username).first()
+    if not db_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    elif not verify_password(password, db_user.password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    return {"user": db_user}
