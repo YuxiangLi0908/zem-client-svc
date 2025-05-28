@@ -24,7 +24,7 @@ app.include_router(api_router)
 
 
 def get_connection():
-    if os.environ.get("ENV", "local") == "production":
+    if os.environ.get("env", "local") == "production":
         conn = psycopg2.connect(
             user=os.environ.get("DBUSER"),
             password=os.environ.get("DBPASS"),
