@@ -1,0 +1,20 @@
+from sqlalchemy import Column, Date, Integer, String
+
+from app.data_models.db.base import Base
+
+
+class Vessel(Base):
+    __tablename__ = "warehouse_vessel"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200))
+    address = Column(String(200), nullable=True)
+    vessel_id = Column(String(255), nullable=True, index=True)
+    master_bill_of_lading = Column(String(255), nullable=True, index=True)
+    origin_port = Column(String(255), nullable=True)
+    destination_port = Column(String(255), nullable=True)
+    shipping_line = Column(String(255), nullable=True)
+    vessel = Column(String(100), nullable=True, index=True)
+    voyage = Column(String(100), nullable=True, index=True)
+    vessel_etd = Column(Date, nullable=True)
+    vessel_eta = Column(Date, nullable=True)
