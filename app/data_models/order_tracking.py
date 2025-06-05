@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class OrderTrackingRequest(BaseModel):
@@ -19,8 +19,7 @@ class UserResponse(BaseModel):
     address: Optional[str]
     username: Optional[str]
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ContainerResponse(BaseModel):
@@ -30,13 +29,14 @@ class ContainerResponse(BaseModel):
     is_special_container: Optional[bool]
     note: Optional[str]
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WarehouseResponse(BaseModel):
     name: str
     address: Optional[str]
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class VesselResponse(BaseModel):
@@ -49,6 +49,8 @@ class VesselResponse(BaseModel):
     voyage: Optional[str]
     vessel_etd: Optional[date]
     vessel_eta: Optional[date]
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RetrievalResponse(BaseModel):
@@ -78,6 +80,8 @@ class RetrievalResponse(BaseModel):
     temp_t49_pod_discharge_at: Optional[datetime]
     temp_t49_hold_status: Optional[bool]
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class OffloadResponse(BaseModel):
     offload_id: Optional[str]
@@ -85,8 +89,10 @@ class OffloadResponse(BaseModel):
     offload_at: Optional[datetime]
     total_pallet: Optional[int]
 
+    model_config = ConfigDict(from_attributes=True)
 
-class OrderResponse(BaseModel):
+
+class OrderPreportResponse(BaseModel):
     order_id: Optional[str]
     created_at: datetime
     eta: Optional[date]
@@ -104,5 +110,17 @@ class OrderResponse(BaseModel):
     retrieval: Optional[RetrievalResponse]
     offload: Optional[OffloadResponse]
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+
+class OrderPostportResponse(BaseModel):
+    order_id: Optional[str]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+
+class OrderResponse(BaseModel):
+    preport_timenode: Optional[OrderPreportResponse]
+    postport_timenode: Optional[OrderPostportResponse]

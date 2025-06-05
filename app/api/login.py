@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 @router.post("/login", response_model=UserAuth, name="login")
-def login(request: LoginRequest, db: Session = Depends(db_session.get_db)):
+async def login(request: LoginRequest, db: Session = Depends(db_session.get_db)):
     db_user = db.query(User).filter(User.username == request.username).first()
     pwd_context = CryptContext(schemes=["django_pbkdf2_sha256"], deprecated="auto")
     if not db_user:
