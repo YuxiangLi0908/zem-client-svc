@@ -17,7 +17,7 @@ class PackingList(Base):
         Integer, ForeignKey("warehouse_shipment.id"), nullable=True
     )
     # quote_id_id = Column(Integer, ForeignKey("warehouse_quote.id"), nullable=True)
-    
+
     product_name = Column(String(255), nullable=True)
     delivery_method = Column(String(255), nullable=True)
     delivery_type = Column(String(255), nullable=True)

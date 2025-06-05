@@ -20,7 +20,7 @@ class Pallet(Base):
     )
     # transfer_batch_number_id = Column(Integer, ForeignKey("warehouse_transferlocation.id"), nullable=True)
     # invoice_delivery_id = Column(Integer, ForeignKey("warehouse_invoicedelivery.id"), nullable=True)
-    
+
     destination = Column(String(255), nullable=True)
     address = Column(String(2000), nullable=True)
     zipcode = Column(String(20), nullable=True)
