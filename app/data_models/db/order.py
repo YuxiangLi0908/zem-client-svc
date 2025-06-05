@@ -69,3 +69,4 @@ class Order(Base):
         Index("ix_order_eta", "eta"),
         Index("ix_order_created_at", "created_at"),
     )
+    
