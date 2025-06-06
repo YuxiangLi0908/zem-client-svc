@@ -6,7 +6,7 @@ router = APIRouter()
 
 
 @router.get("/heartbeat", response_model=HeartbeatResult, name="heartbeat")
-def get_heartbeat() -> HeartbeatResult:
+async def get_heartbeat() -> HeartbeatResult:
     """
     Get status of the service
 

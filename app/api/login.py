@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 @router.post("/login", response_model=UserAuth, name="login")
-def login(request: LoginRequest, db: Session = Depends(db_session.get_db)):
+async def login(request: LoginRequest, db: Session = Depends(db_session.get_db)):
     db_user = db.query(User).filter(User.username == request.username).first()
     pwd_context = CryptContext(schemes=["django_pbkdf2_sha256"], deprecated="auto")
     if not db_user:
@@ -32,21 +32,3 @@ def login(request: LoginRequest, db: Session = Depends(db_session.get_db)):
         algorithm=app_config.JWT_ALGO,
     )
     return {"user": db_user.zem_name, "access_token": token}
-
-
-# test
-@router.get("/user/orders")
-def get_user_orders(
-    current_user: str = Depends(get_current_user),
-    db: Session = Depends(db_session.get_db),
-):
-    user = db.query(User).filter(User.username == current_user.username).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    orders = [
-        {"id": 1, "product_name": "apples", "status": "normat"},
-        {"id": 2, "product_name": "dell monitor", "status": "normat"},
-        {"id": 3, "product_name": "apple airpods", "status": "in transit"},
-        {"id": 4, "product_name": "vouri", "status": "delivered"},
-    ]
-    return orders

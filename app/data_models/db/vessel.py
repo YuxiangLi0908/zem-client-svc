@@ -7,8 +7,6 @@ class Vessel(Base):
     __tablename__ = "warehouse_vessel"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(200))
-    address = Column(String(200), nullable=True)
     vessel_id = Column(String(255), nullable=True, index=True)
     master_bill_of_lading = Column(String(255), nullable=True, index=True)
     origin_port = Column(String(255), nullable=True)
