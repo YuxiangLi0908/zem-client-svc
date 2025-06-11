@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -92,15 +92,19 @@ class OffloadResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TrackingEvent(BaseModel):
+    status: str
+    description: Optional[str] = None
+    location: Optional[str] = None
+    timestamp: Optional[Any] = None
+
+
 class OrderPreportResponse(BaseModel):
     order_id: Optional[str]
     created_at: datetime
     eta: Optional[date]
     order_type: Optional[str]
-    customer_do_link: Optional[str]
-    do_sent: Optional[bool]
     add_to_t49: Optional[bool]
-    packing_list_updloaded: Optional[bool]
     cancel_notification: Optional[bool]
     cancel_time: Optional[date]
     user: Optional[UserResponse]
@@ -109,16 +113,15 @@ class OrderPreportResponse(BaseModel):
     vessel: Optional[VesselResponse]
     retrieval: Optional[RetrievalResponse]
     offload: Optional[OffloadResponse]
+    history: Optional[list[TrackingEvent]] = None
 
     model_config = ConfigDict(from_attributes=True)
-
 
 
 class OrderPostportResponse(BaseModel):
     order_id: Optional[str]
 
     model_config = ConfigDict(from_attributes=True)
-
 
 
 class OrderResponse(BaseModel):

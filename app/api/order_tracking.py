@@ -13,7 +13,7 @@ router = APIRouter()
 @router.post("/order_tracking", response_model=OrderResponse, name="order_tracking")
 async def get_order_full_history(
     request: OrderTrackingRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: str, #User = Depends(get_current_user),
     db: Session = Depends(db_session.get_db),
 ) -> OrderResponse:
     container_number = request.container_number
