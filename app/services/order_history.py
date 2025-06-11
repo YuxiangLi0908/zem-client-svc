@@ -10,7 +10,7 @@ from app.data_models.order_tracking import OrderPreportResponse, OrderResponse, 
 
 class OrderTracking:
     def __init__(self, user: str, container_number: str, db_session: Session) -> None:
-        # self.user: User = user
+        self.user: User = user
         self.container_number = container_number
         self.db_session = db_session
 
@@ -33,7 +33,7 @@ class OrderTracking:
             )
             .filter(
                 Container.container_number == self.container_number,
-                # User.zem_name == self.user.zem_name,
+                User.zem_name == self.user.zem_name,
             )
             .first()
         )
