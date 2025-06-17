@@ -43,10 +43,11 @@ class OrderTracking:
             )
             .filter(
                 Container.container_number == self.container_number,
-                User.zem_name == self.user.zem_name,
             )
-            .first()
         )
+        if self.user.username != "superuser":
+            order_data = order_data.filter(User.zem_name == self.user.zem_name)
+        order_data = order_data.first()
 
         if not order_data:
             raise HTTPException(
