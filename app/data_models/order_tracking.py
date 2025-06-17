@@ -121,6 +121,8 @@ class OrderPreportResponse(BaseModel):
 class PalletShipmentSummary(BaseModel):
     destination: Optional[str]
     PO_ID: Optional[str]
+    delivery_method: Optional[str] = None
+    note: Optional[str] = None
     shipment_batch_number: Optional[str] = None
     is_shipment_schduled: Optional[bool] = None
     shipment_schduled_at: Optional[datetime] = None
