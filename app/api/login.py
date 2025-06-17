@@ -3,13 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
-from app.data_models.db.container import Container
-from app.data_models.db.order import Order
 from app.data_models.db.user import User
 from app.data_models.login import LoginRequest, UserAuth
 from app.services.config import app_config
 from app.services.db_session import db_session
-from app.services.user_auth import get_current_user
 
 router = APIRouter()
 

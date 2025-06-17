@@ -118,10 +118,32 @@ class OrderPreportResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class OrderPostportResponse(BaseModel):
-    order_id: Optional[str]
+class PalletShipmentSummary(BaseModel):
+    destination: Optional[str]
+    PO_ID: Optional[str]
+    delivery_method: Optional[str] = None
+    note: Optional[str] = None
+    delivery_type: Optional[str] = None
+    shipment_batch_number: Optional[str] = None
+    is_shipment_schduled: Optional[bool] = None
+    shipment_schduled_at: Optional[datetime] = None
+    shipment_appointment: Optional[datetime] = None
+    is_shipped: Optional[bool] = None
+    shipped_at: Optional[datetime] = None
+    is_arrived: Optional[bool] = None
+    arrived_at: Optional[datetime] = None
+    pod_link: Optional[str] = None
+    pod_uploaded_at: Optional[datetime] = None
+    cbm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    n_pallet: Optional[int] = None
+    pcs: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class OrderPostportResponse(BaseModel):
+    shipment: Optional[list[PalletShipmentSummary]] = []
 
 
 class OrderResponse(BaseModel):
