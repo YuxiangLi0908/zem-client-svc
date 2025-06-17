@@ -165,6 +165,7 @@ class OrderTracking:
                         cast(func.sum(Pallet.weight_lbs) / 2.20462, Numeric), 2
                     ).label("weight_kg"),
                     func.count(distinct(Pallet.id)).label("n_pallet"),
+                    func.count(Pallet.pcs).label("pcs"),
                 )
                 .join(Pallet.container)
                 .outerjoin(Pallet.shipment)
@@ -213,6 +214,7 @@ class OrderTracking:
                 cbm=row[15],
                 weight_kg=row[16],
                 n_pallet=row[17],
+                pcs=row[18],
             )
             for row in results
         ]

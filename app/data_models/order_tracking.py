@@ -137,6 +137,7 @@ class PalletShipmentSummary(BaseModel):
     cbm: Optional[float] = None
     weight_kg: Optional[float] = None
     n_pallet: Optional[int] = None
+    pcs: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
