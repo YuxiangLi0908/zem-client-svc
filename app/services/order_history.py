@@ -32,6 +32,7 @@ class OrderTracking:
         order_data = (
             self.db_session.query(Order)
             .join(Order.container)
+            .join(Order.user)
             .options(
                 joinedload(Order.user),
                 joinedload(Order.container),
