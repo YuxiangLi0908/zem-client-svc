@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytz
 from fastapi import HTTPException
 from sqlalchemy import Numeric, cast, distinct, func
@@ -21,6 +23,7 @@ class OrderTracking:
         self.user: User = user
         self.container_number = container_number
         self.db_session = db_session
+        self.tz = pytz.timezone("Asia/Shanghai")
 
     def build_order_full_history(self) -> OrderResponse:
         return OrderResponse(
@@ -57,14 +60,13 @@ class OrderTracking:
 
         order_data = OrderPreportResponse.model_validate(order_data).model_dump()
         preport_history = []
-        china_tz = pytz.timezone("Asia/Shanghai")
         pod = None
         if order_data["created_at"]:
             preport_history.append(
                 {
                     "status": "ORDER_CREATED",
                     "description": f"创建订单: {order_data['container']['container_number']}",
-                    "timestamp": order_data["created_at"].astimezone(china_tz),
+                    "timestamp": self._convert_tz(order_data["created_at"]),
                 }
             )
         if order_data["add_to_t49"]:
@@ -75,9 +77,9 @@ class OrderTracking:
                         "status": "IN_TRANSIT",
                         "description": f"到达港口: {order_data['vessel']['destination_port']}",
                         "location": order_data["vessel"]["destination_port"],
-                        "timestamp": order_data["retrieval"][
-                            "temp_t49_pod_arrive_at"
-                        ].astimezone(china_tz),
+                        "timestamp": self._convert_tz(
+                            order_data["retrieval"]["temp_t49_pod_arrive_at"]
+                        ),
                     }
                 )
             if order_data["retrieval"]["temp_t49_pod_discharge_at"]:
@@ -86,9 +88,9 @@ class OrderTracking:
                         "status": "IN_TRANSIT",
                         "description": f"港口卸货",
                         "location": order_data["vessel"]["destination_port"],
-                        "timestamp": order_data["retrieval"][
-                            "temp_t49_pod_discharge_at"
-                        ].astimezone(china_tz),
+                        "timestamp": self._convert_tz(
+                            order_data["retrieval"]["temp_t49_pod_discharge_at"]
+                        ),
                     }
                 )
         if order_data["retrieval"]:
@@ -96,10 +98,10 @@ class OrderTracking:
                 preport_history.append(
                     {
                         "status": "IN_TRANSIT",
-                        "description": f"预约港口提柜: 预计提柜时间 {order_data['retrieval']['target_retrieval_timestamp'].astimezone(china_tz)}",
+                        "description": f"预约港口提柜: 预计提柜时间 {self._convert_tz(order_data['retrieval']['target_retrieval_timestamp'])}",
                         "location": pod,
-                        "timestamp": order_data["retrieval"]["scheduled_at"].astimezone(
-                            china_tz
+                        "timestamp": self._convert_tz(
+                            order_data["retrieval"]["scheduled_at"]
                         ),
                     }
                 )
@@ -111,8 +113,8 @@ class OrderTracking:
                         "location": order_data["retrieval"][
                             "retrieval_destination_precise"
                         ],
-                        "timestamp": order_data["retrieval"]["arrive_at"].astimezone(
-                            china_tz
+                        "timestamp": self._convert_tz(
+                            order_data["retrieval"]["arrive_at"]
                         ),
                     }
                 )
@@ -125,8 +127,8 @@ class OrderTracking:
                         "location": order_data["retrieval"][
                             "retrieval_destination_precise"
                         ],
-                        "timestamp": order_data["offload"]["offload_at"].astimezone(
-                            china_tz
+                        "timestamp": self._convert_tz(
+                            order_data["offload"]["offload_at"]
                         ),
                     }
                 )
@@ -135,9 +137,9 @@ class OrderTracking:
                     {
                         "status": "EMPTY_RETURN",
                         "description": f"已归还空箱",
-                        "timestamp": order_data["retrieval"][
-                            "empty_returned_at"
-                        ].astimezone(china_tz),
+                        "timestamp": self._convert_tz(
+                            order_data["retrieval"]["empty_returned_at"]
+                        ),
                     }
                 )
         order_data["history"] = preport_history
@@ -155,11 +157,11 @@ class OrderTracking:
                     Shipment.shipment_batch_number,
                     Shipment.is_shipment_schduled,
                     Shipment.shipment_schduled_at,
-                    Shipment.shipment_appointment,
+                    Shipment.shipment_appointment_utc.label("shipment_appointment"),
                     Shipment.is_shipped,
-                    Shipment.shipped_at,
+                    Shipment.shipped_at_utc.label("shipped_at"),
                     Shipment.is_arrived,
-                    Shipment.arrived_at,
+                    Shipment.arrived_at_utc.label("arrived_at"),
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
                     func.round(cast(func.sum(Pallet.cbm), Numeric), 4).label("cbm"),
@@ -181,20 +183,20 @@ class OrderTracking:
                     Shipment.shipment_batch_number,
                     Shipment.is_shipment_schduled,
                     Shipment.shipment_schduled_at,
-                    Shipment.shipment_appointment,
+                    Shipment.shipment_appointment_utc,
                     Shipment.is_shipped,
-                    Shipment.shipped_at,
+                    Shipment.shipped_at_utc,
                     Shipment.is_arrived,
-                    Shipment.arrived_at,
+                    Shipment.arrived_at_utc,
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
                 )
                 .all()
             )
-        except:
+        except Exception as e:
             raise HTTPException(
                 status_code=404,
-                detail=f"No shipment history for {self.container_number}",
+                detail=f"{e}: No shipment history for {self.container_number}",
             )
         data = [
             PalletShipmentSummary(
@@ -205,14 +207,14 @@ class OrderTracking:
                 delivery_type=row[4],
                 shipment_batch_number=row[5],
                 is_shipment_schduled=row[6],
-                shipment_schduled_at=row[7],
-                shipment_appointment=row[8],
+                shipment_schduled_at=self._convert_tz(row[7]),
+                shipment_appointment=self._convert_tz(row[8]),
                 is_shipped=row[9],
-                shipped_at=row[10],
+                shipped_at=self._convert_tz(row[10]),
                 is_arrived=row[11],
-                arrived_at=row[12],
+                arrived_at=self._convert_tz(row[12]),
                 pod_link=row[13],
-                pod_uploaded_at=row[14],
+                pod_uploaded_at=self._convert_tz(row[14]),
                 cbm=row[15],
                 weight_kg=row[16],
                 n_pallet=row[17],
@@ -221,3 +223,9 @@ class OrderTracking:
             for row in results
         ]
         return OrderPostportResponse(shipment=data)
+
+    def _convert_tz(self, ts: datetime) -> datetime:
+        if not ts:
+            return ts
+        else:
+            return ts.astimezone(self.tz)
