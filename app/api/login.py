@@ -24,7 +24,10 @@ async def login(request: LoginRequest, db: Session = Depends(db_session.get_db))
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
     token = jwt.encode(
-        {"user_name": db_user.zem_name},
+        {
+            "user_name": db_user.username,
+            "zem_name": db_user.zem_name,
+        },
         app_config.SECRET_KEY,
         algorithm=app_config.JWT_ALGO,
     )
