@@ -228,4 +228,4 @@ class OrderTracking:
         if not ts:
             return ts
         else:
-            return ts.astimezone(self.tz)
+            return ts.astimezone(self.tz).replace(tzinfo=None)
