@@ -23,9 +23,11 @@ class OrderTracking:
         self.db_session = db_session
 
     def build_order_full_history(self) -> OrderResponse:
+        preport = self._build_preport_history()
+        postport = self._build_postport_history() if preport is not None else None
         return OrderResponse(
-            preport_timenode=self._build_preport_history(),
-            postport_timenode=self._build_postport_history(),
+            preport_timenode=preport,
+            postport_timenode=postport,
         )
 
     def _build_preport_history(self) -> OrderPreportResponse:
@@ -48,8 +50,8 @@ class OrderTracking:
         if self.user.username != "superuser":
             order_data = order_data.filter(User.zem_name == self.user.zem_name)
         order_data = order_data.first()
-
-        if not order_data:
+        if not order_data:  #这里改成，如果查不到这个柜号的信息，就返回空，页面显示一下找不到
+            return None
             raise HTTPException(
                 status_code=404,
                 detail=f"No matching order found for {self.container_number}",
@@ -72,7 +74,7 @@ class OrderTracking:
             if order_data["retrieval"]["temp_t49_pod_arrive_at"]:
                 preport_history.append(
                     {
-                        "status": "IN_TRANSIT",
+                        "status": "ARRIVED_AT_PORT",
                         "description": f"到达港口: {order_data['vessel']['destination_port']}",
                         "location": order_data["vessel"]["destination_port"],
                         "timestamp": order_data["retrieval"][
@@ -83,7 +85,7 @@ class OrderTracking:
             if order_data["retrieval"]["temp_t49_pod_discharge_at"]:
                 preport_history.append(
                     {
-                        "status": "IN_TRANSIT",
+                        "status": "PORT_UNLOADING",
                         "description": f"港口卸货",
                         "location": order_data["vessel"]["destination_port"],
                         "timestamp": order_data["retrieval"][
@@ -95,7 +97,7 @@ class OrderTracking:
             if order_data["retrieval"]["scheduled_at"]:
                 preport_history.append(
                     {
-                        "status": "IN_TRANSIT",
+                        "status": "PORT_PICKUP_SCHEDULED",
                         "description": f"预约港口提柜: 预计提柜时间 {order_data['retrieval']['target_retrieval_timestamp'].astimezone(china_tz)}",
                         "location": pod,
                         "timestamp": order_data["retrieval"]["scheduled_at"].astimezone(
@@ -220,4 +222,5 @@ class OrderTracking:
             )
             for row in results
         ]
+        #print('查找数据',data)
         return OrderPostportResponse(shipment=data)
