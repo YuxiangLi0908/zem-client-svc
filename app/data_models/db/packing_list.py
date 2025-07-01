@@ -13,7 +13,7 @@ class PackingList(Base):
     container_number_id = Column(
         Integer, ForeignKey("warehouse_container.id"), nullable=True
     )
-    shipment_batch_number_id = Column(
+    master_shipment_batch_number_id = Column(
         Integer, ForeignKey("warehouse_shipment.id"), nullable=True
     )
     # quote_id_id = Column(Integer, ForeignKey("warehouse_quote.id"), nullable=True)
