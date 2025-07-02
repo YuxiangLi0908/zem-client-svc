@@ -15,7 +15,7 @@ class Pallet(Base):
     container_number_id = Column(
         Integer, ForeignKey("warehouse_container.id"), nullable=True
     )
-    shipment_batch_number_id = Column(
+    master_shipment_batch_number_id = Column(
         Integer, ForeignKey("warehouse_shipment.id"), nullable=True
     )
     # transfer_batch_number_id = Column(Integer, ForeignKey("warehouse_transferlocation.id"), nullable=True)
@@ -47,7 +47,11 @@ class Pallet(Base):
 
     # Relationships
     container = relationship("Container", backref="pallet")
-    shipment = relationship("Shipment", backref="pallet")
+    shipment = relationship(
+        "Shipment",
+        foreign_keys=[master_shipment_batch_number_id],  # 显式绑定到 master_shipment_batch_number_id
+        backref="pallets_master"  # 避免与Django的默认关联冲突
+    )
     # transfer = relationship("TransferLocation", back_populates="pallets")
     # invoice_delivery = relationship("InvoiceDelivery", back_populates="pallets")
 

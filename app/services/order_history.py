@@ -207,7 +207,7 @@ class OrderTracking:
                 delivery_method=row[2],
                 note=row[3],
                 delivery_type=row[4],
-                shipment_batch_number=row[5],
+                master_shipment_batch_number=row[5],
                 is_shipment_schduled=row[6],
                 shipment_schduled_at=self._convert_tz(row[7]),
                 shipment_appointment=self._convert_tz(row[8]),

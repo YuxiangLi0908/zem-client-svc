@@ -124,7 +124,7 @@ class PalletShipmentSummary(BaseModel):
     delivery_method: Optional[str] = None
     note: Optional[str] = None
     delivery_type: Optional[str] = None
-    shipment_batch_number: Optional[str] = None
+    master_shipment_batch_number: Optional[str] = None
     is_shipment_schduled: Optional[bool] = None
     shipment_schduled_at: Optional[datetime] = None
     shipment_appointment: Optional[datetime] = None
