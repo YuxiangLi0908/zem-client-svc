@@ -1,11 +1,13 @@
 from datetime import datetime
-
+from collections import defaultdict
+from typing import Dict, List
 import pytz
 from fastapi import HTTPException
 from sqlalchemy import Numeric, cast, distinct, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.data_models.db.container import Container
+from app.data_models.db.vessel import Vessel
 from app.data_models.db.order import Order
 from app.data_models.db.pallet import Pallet
 from app.data_models.db.shipment import Shipment
@@ -15,6 +17,10 @@ from app.data_models.order_tracking import (
     OrderPreportResponse,
     OrderResponse,
     PalletShipmentSummary,
+    ContainerFullResponse,
+    ContainerBasicInfo,
+    ContainerShipmentStatus,
+    DestinationStatusGroup
 )
 
 
@@ -232,3 +238,180 @@ class OrderTracking:
             return ts
         else:
             return ts.astimezone(self.tz).replace(tzinfo=None)
+
+class OrderTrackingDate:
+    def __init__(self, user: User, start_date: datetime, end_date: datetime, db_session: Session) -> None:
+        self.user: User = user
+        self.start_date = start_date
+        self.end_date = end_date
+        self.db_session = db_session
+        self.tz = pytz.timezone("Asia/Shanghai")
+    
+    def build_order_date_full_history(self) -> OrderResponse:
+        #查找满足条件的柜子
+        containers = (
+            self.db_session.query(Container)
+            .join(Order.container)
+            .join(Order.vessel)
+            .filter(
+                Vessel.vessel_eta >= self.start_date,
+                Vessel.vessel_eta <= self.end_date
+            )
+            .all()
+        )
+        if self.user.username != "superuser":
+            order_data = order_data.filter(User.zem_name == self.user.zem_name)
+        
+        if not containers:  #如果查不到这个柜号的信息，就返回空，页面显示找不到
+            return OrderPreportResponse(history=[])
+
+        result = []
+        for container in containers:
+            # 构建基本信息
+            basic_info = self._build_basic_info(container)
+            
+            # 构建派送信息（按目的地和状态分组）
+            shipment_status = self._build_shipment_status(container)
+            
+            result.append({
+                "basic_info": {
+                    "container_number": basic_info.container_number,
+                    "vessel_eta": basic_info.vessel_eta.isoformat() if basic_info.vessel_eta else None,
+                    "origin_port": basic_info.origin_port,
+                    "destination_port": basic_info.destination_port,
+                    "history": [{
+                        "date": event["date"] if "date" in event else None,
+                        "description": event.get("description"),
+                        "icon": event.get("icon")
+                    } for event in basic_info.history]
+                },
+                "shipment_status": {
+                    "unscheduled": [group.dict() for group in shipment_status.unscheduled],
+                    "scheduled": [group.dict() for group in shipment_status.scheduled],
+                    "shipped": [group.dict() for group in shipment_status.shipped],
+                    "arrived": [group.dict() for group in shipment_status.arrived],
+                    "with_pod": [group.dict() for group in shipment_status.with_pod]
+                }
+            })
+        
+        return {"result": result}
+
+    def _build_basic_info(self, container: Container) -> ContainerBasicInfo:
+        order = (
+            self.db_session.query(Order)
+            .join(Order.container)
+            .options(
+                joinedload(Order.vessel),  
+                joinedload(Order.retrieval)
+            )
+            .filter(Container.container_number == container.container_number)
+            .first()
+        )
+        default_history = [{
+            "date": datetime.now(self.tz).isoformat(),
+            "description": "未查询到",
+            "icon": "fa-info-circle"
+        }]
+        if not order:
+            return ContainerBasicInfo(
+                container_number=container.container_number,
+                vessel_eta=None,
+                origin_port=None,
+                destination_port=None,
+                history=default_history  
+            )
+        
+        if not order.vessel:
+            return ContainerBasicInfo(
+                container_number=container.container_number,
+                vessel_eta=None,
+                origin_port=None,
+                destination_port=None,
+                history=self._build_history_timeline(order) or default_history
+            )
+        
+        return ContainerBasicInfo(
+            container_number=container.container_number,
+            vessel_eta=order.vessel.vessel_eta,
+            origin_port=order.vessel.origin_port,
+            destination_port=order.vessel.destination_port,
+            history=self._build_history_timeline(order) or default_history
+        )
+    
+    def _build_history_timeline(self, order: Order) -> List[Dict]:
+        timeline = []
+        if order.created_at:
+            timeline.append({
+                "date": order.created_at.isoformat(),
+                "description": "创建订单",
+                "icon": "fa-file-alt"
+            })
+        if order.vessel.vessel_eta:
+            timeline.append({
+                "date": order.vessel.vessel_eta.isoformat(),
+                "description": "预计到港",
+                "icon": "fa-ship"
+            })
+        #没写完
+        return timeline
+
+    def _build_shipment_status(self, container: str) -> OrderPostportResponse:
+        
+        pallets = (
+            self.db_session.query(Pallet)
+            .join(Pallet.shipment)
+            .filter(Pallet.container_number_id == container.id)
+            .all()
+        )
+
+        # 初始化分组结构
+        status_groups = {
+            "unscheduled": defaultdict(list),
+            "scheduled": defaultdict(list),
+            "shipped": defaultdict(list),
+            "arrived": defaultdict(list),
+            "with_pod": defaultdict(list)
+        }
+
+        # 分类逻辑
+        for pallet in pallets:
+            dest = pallet.destination
+            po_id = pallet.PO_ID
+            item = {
+                "PO_ID": po_id,
+                "cbm": pallet.cbm,
+                "weight_kg": pallet.weight_lbs / 2.20462,
+                "pallet_count": 1
+            }
+
+            if not pallet.shipment.is_shipment_schduled:
+                status_groups["unscheduled"][dest].append(item)
+            elif not pallet.shipment.is_shipped:
+                status_groups["scheduled"][dest].append(item)
+            elif not pallet.shipment.is_arrived:
+                status_groups["shipped"][dest].append(item)
+            elif not pallet.shipment.pod_link:
+                status_groups["arrived"][dest].append(item)
+            else:
+                status_groups["with_pod"][dest].append(item)
+
+        # 转换为DestinationStatusGroup列表
+        def build_group(items: Dict[str, List]) -> List[DestinationStatusGroup]:
+            return [
+                DestinationStatusGroup(
+                    destination=dest,
+                    PO_IDs=list({x["PO_ID"] for x in group_items}),  # 去重PO_ID
+                    total_cbm=sum(x["cbm"] for x in group_items),
+                    total_weight_kg=sum(x["weight_kg"] for x in group_items),
+                    pallet_count=len(group_items)
+                )
+                for dest, group_items in items.items()
+            ]
+
+        return ContainerShipmentStatus(
+            unscheduled=build_group(status_groups["unscheduled"]),
+            scheduled=build_group(status_groups["scheduled"]),
+            shipped=build_group(status_groups["shipped"]),
+            arrived=build_group(status_groups["arrived"]),
+            with_pod=build_group(status_groups["with_pod"])
+        )

@@ -1,5 +1,6 @@
+#定义了所有Pydantic模型，定义API接口的输入输出格式，自动数据验证，生成API文档
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any, Optional, List, Dict
 
 from pydantic import BaseModel, ConfigDict
 
@@ -7,7 +8,17 @@ from pydantic import BaseModel, ConfigDict
 class OrderTrackingRequest(BaseModel):
     container_number: str
 
+class OrderTrackingDateRequest(BaseModel):
+    start_date: datetime
+    end_date: datetime
 
+class DateRangeSearchResponse(BaseModel):
+    result: List[Dict]
+    # containers: List[Dict]  
+    # class Config:
+    #     json_encoders = {
+    #         datetime: lambda v: v.isoformat() if v else None
+    #     }
 class UserResponse(BaseModel):
     zem_name: str
     full_name: str
@@ -149,3 +160,32 @@ class OrderPostportResponse(BaseModel):
 class OrderResponse(BaseModel):
     preport_timenode: Optional[OrderPreportResponse]
     postport_timenode: Optional[OrderPostportResponse]
+
+class ContainerBasicInfo(BaseModel):
+    """柜子基础信息（Preport数据）"""
+    container_number: str
+    vessel_eta: Optional[datetime]
+    origin_port: Optional[str]
+    destination_port: Optional[str]
+    history: List[Dict]  # 时间线事件
+
+class DestinationStatusGroup(BaseModel):
+    """按目的地和状态分组的货物数据"""
+    destination: str
+    PO_IDs: List[str]      # 该目的地下的PO列表
+    total_cbm: float       # 总体积
+    total_weight_kg: float # 总重量
+    pallet_count: int      # 托盘数
+
+class ContainerShipmentStatus(BaseModel):
+    """每个状态组（未预约/已预约/已出库/已送达/已签收）"""
+    unscheduled: List[DestinationStatusGroup]
+    scheduled: List[DestinationStatusGroup]
+    shipped: List[DestinationStatusGroup]
+    arrived: List[DestinationStatusGroup]
+    with_pod: List[DestinationStatusGroup]
+
+class ContainerFullResponse(BaseModel):
+    """最终返回的每柜数据"""
+    basic_info: ContainerBasicInfo          # Preport数据
+    shipment_status: ContainerShipmentStatus # Postport数据
