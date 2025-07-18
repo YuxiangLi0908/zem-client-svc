@@ -56,8 +56,8 @@ class OrderTracking:
                 Container.container_number == self.container_number,
             )
         )
-        if self.user.username != "superuser":
-            order_data = order_data.filter(User.zem_name == self.user.zem_name)
+        # if self.user.username != "superuser":
+        #     order_data = order_data.filter(User.zem_name == self.user.zem_name)
         order_data = order_data.first()
         if not order_data:  #这里改成，如果查不到这个柜号的信息，就返回空，页面显示一下找不到
             return None
@@ -249,18 +249,18 @@ class OrderTrackingDate:
     
     def build_order_date_full_history(self) -> OrderResponse:
         #查找满足条件的柜子
-        containers = (
+        containers_query = (
             self.db_session.query(Container)
             .join(Order.container)
             .join(Order.vessel)
+            .join(Order.user)  # You need to join User to filter by zem_name
             .filter(
                 Vessel.vessel_eta >= self.start_date,
                 Vessel.vessel_eta <= self.end_date
             )
-            .all()
         )
         if self.user.username != "superuser":
-            order_data = order_data.filter(User.zem_name == self.user.zem_name)
+            containers = containers_query.filter(User.zem_name == self.user.zem_name)
         
         if not containers:  #如果查不到这个柜号的信息，就返回空，页面显示找不到
             return OrderPreportResponse(history=[])
