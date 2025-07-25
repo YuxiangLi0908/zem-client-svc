@@ -1,6 +1,6 @@
 from datetime import datetime
 from collections import defaultdict
-from typing import Dict, List
+from typing import Dict, List, Optional,Any
 import pytz
 from fastapi import HTTPException
 from sqlalchemy import Numeric, cast, distinct, func
@@ -20,26 +20,50 @@ from app.data_models.order_tracking import (
     ContainerFullResponse,
     ContainerBasicInfo,
     ContainerShipmentStatus,
-    DestinationStatusGroup
+    DestinationStatusGroup,
+    DateRangeSearchResponse,
+    ContainerDateResponse
 )
 
 
 class OrderTracking:
-    def __init__(self, user: User, container_number: str, db_session: Session) -> None:
+    #整合了柜号查询和日期查询
+    def __init__(self, user: User, db_session: Session, *, 
+                 container_number: Optional[str] = None, 
+                 start_date: Optional[datetime] = None,
+                 end_date: Optional[datetime] = None
+                ) -> None:
         self.user: User = user
-        self.container_number = container_number
         self.db_session = db_session
         self.tz = pytz.timezone("Asia/Shanghai")
+       
+        if container_number and (start_date or end_date):
+            raise ValueError("Cannot specify both container_number and date range")
+        if not container_number and not (start_date and end_date):
+            raise ValueError("Must specify either container_number or date range")
+        self.container_number = container_number
+        self.start_date = start_date
+        self.end_date = end_date
+        
 
     def build_order_full_history(self) -> OrderResponse:
-        preport = self._build_preport_history()
-        postport = self._build_postport_history() if preport is not None else None
+        #查找港前数据
+        order_data = self._search_preport_history(self.container_number)
+        #处理港前数据
+        preport = self._build_preport_history(order_data)
+        
+        #查找港后数据
+        if preport is not None:
+            raw_results = self._search_postport_history(self.container_number)
+            postport = self._build_postport_history(raw_results) 
+        else:
+            postport = None
         return OrderResponse(
             preport_timenode=preport,
             postport_timenode=postport,
         )
 
-    def _build_preport_history(self) -> OrderPreportResponse:
+    def _search_preport_history(self, container_number) -> Optional[Order]:
         order_data = (
             self.db_session.query(Order)
             .join(Order.container)
@@ -53,20 +77,38 @@ class OrderTracking:
                 joinedload(Order.offload),
             )
             .filter(
-                Container.container_number == self.container_number,
+                Container.container_number == container_number,
             )
         )
-        # if self.user.username != "superuser":
-        #     order_data = order_data.filter(User.zem_name == self.user.zem_name)
-        order_data = order_data.first()
+        
+        if self.user.username != "superuser":
+            order_data = order_data.filter(User.zem_name == self.user.zem_name)
+        return order_data.first()
+
+    def _build_preport_history(self,order_data: Optional[Order]) -> Optional[OrderPreportResponse]:
         if not order_data:  #这里改成，如果查不到这个柜号的信息，就返回空，页面显示一下找不到
             return None
             raise HTTPException(
                 status_code=404,
                 detail=f"No matching order found for {self.container_number}",
             )
-
         order_data = OrderPreportResponse.model_validate(order_data).model_dump()
+        #构建基础信息
+        if 'container' in order_data:
+            order_data.update({
+                'container_number': order_data['container'].get('container_number'),
+                'container_type': order_data['container'].get('container_type'),
+                'weight_lbs': order_data['container'].get('weight_lbs')
+            })
+        
+        if 'vessel' in order_data:
+            order_data.update({
+                'vessel_eta': order_data['vessel'].get('vessel_eta'),
+                'origin_port': order_data['vessel'].get('origin_port'),
+                'destination_port': order_data['vessel'].get('destination_port'),
+                'shipping_line': order_data['vessel'].get('shipping_line'),
+                'vessel_name': order_data['vessel'].get('vessel')
+            })
         preport_history = []
         pod = None
         if order_data["created_at"]:
@@ -153,9 +195,9 @@ class OrderTracking:
         order_data["history"] = preport_history
         return OrderPreportResponse.model_validate(order_data)
 
-    def _build_postport_history(self) -> OrderPostportResponse:
+    def _search_postport_history(self, container_number) -> List[Any]:
         try:
-            results = (
+            return (
                 self.db_session.query(
                     Pallet.destination,
                     Pallet.PO_ID,
@@ -181,7 +223,7 @@ class OrderTracking:
                 )
                 .join(Pallet.container)
                 .outerjoin(Pallet.shipment)
-                .filter(Container.container_number == self.container_number)
+                .filter(Container.container_number == container_number)
                 .group_by(
                     Pallet.destination,
                     Pallet.PO_ID,
@@ -206,6 +248,8 @@ class OrderTracking:
                 status_code=404,
                 detail=f"{e}: No shipment history for {self.container_number}",
             )
+    
+    def _build_postport_history(self, raw_results: List[Any]) -> OrderPostportResponse:       
         data = [
             PalletShipmentSummary(
                 destination=row[0],
@@ -228,9 +272,8 @@ class OrderTracking:
                 n_pallet=row[17],
                 pcs=row[18],
             )
-            for row in results
+            for row in raw_results
         ]
-        #print('查找数据',data)
         return OrderPostportResponse(shipment=data)
 
     def _convert_tz(self, ts: datetime) -> datetime:
@@ -239,60 +282,85 @@ class OrderTracking:
         else:
             return ts.astimezone(self.tz).replace(tzinfo=None)
 
-class OrderTrackingDate:
-    def __init__(self, user: User, start_date: datetime, end_date: datetime, db_session: Session) -> None:
-        self.user: User = user
-        self.start_date = start_date
-        self.end_date = end_date
-        self.db_session = db_session
-        self.tz = pytz.timezone("Asia/Shanghai")
-    
-    def build_order_date_full_history(self) -> OrderResponse:
-        #查找满足条件的柜子
-        containers_query = (
+    def _search_containers_by_date(self) -> List[Container]:
+        query = (
             self.db_session.query(Container)
             .join(Order.container)
             .join(Order.vessel)
-            .join(Order.user)  # You need to join User to filter by zem_name
+            .join(Order.user)
             .filter(
                 Vessel.vessel_eta >= self.start_date,
                 Vessel.vessel_eta <= self.end_date
             )
         )
         if self.user.username != "superuser":
-            containers = containers_query.filter(User.zem_name == self.user.zem_name)
-        
-        if not containers:  #如果查不到这个柜号的信息，就返回空，页面显示找不到
-            return OrderPreportResponse(history=[])
+            query = query.filter(User.zem_name == self.user.zem_name)
+        return query.all()
 
-        result = []
+    def build_order_date_full_history(self) -> OrderResponse:
+        #查找满足条件的柜子
+        containers = self._search_containers_by_date()
+        if not containers:
+            return DateRangeSearchResponse(containers=[])
+
+        results = []
         for container in containers:
-            # 构建基本信息
-            basic_info = self._build_basic_info(container)
-            
-            # 构建派送信息（按目的地和状态分组）
-            shipment_status = self._build_shipment_status(container)
-            
-            result.append({
-                "basic_info": {
-                    "container_number": basic_info.container_number,
-                    "vessel_eta": basic_info.vessel_eta.isoformat() if basic_info.vessel_eta else None,
-                    "origin_port": basic_info.origin_port,
-                    "destination_port": basic_info.destination_port,
-                    "history": [{
-                        "date": event["date"] if "date" in event else None,
-                        "description": event.get("description"),
-                        "icon": event.get("icon")
-                    } for event in basic_info.history]
-                },
-                "shipment_status": {
-                    "unscheduled": [group.dict() for group in shipment_status.unscheduled],
-                    "scheduled": [group.dict() for group in shipment_status.scheduled],
-                    "shipped": [group.dict() for group in shipment_status.shipped],
-                    "arrived": [group.dict() for group in shipment_status.arrived],
-                    "with_pod": [group.dict() for group in shipment_status.with_pod]
-                }
+            #港前数据
+            preport_data = self._search_preport_history(container.container_number)
+            preport = self._build_preport_history(preport_data)
+            #港后数据
+            raw_postport = self._search_postport_history(container.container_number)
+            postport = self._build_postport_history(raw_postport) if raw_postport else None
+            results.append({
+                "preport": preport.model_dump() if preport else None,
+                "postport": postport.model_dump() if postport else None
             })
+        return {"containers": results}
+    
+    def _build_container_basic_info(self, container: Container) -> ContainerBasicInfo:
+        order = (
+            self.db_session.query(Order)
+            .join(Order.vessel)
+            .filter(Order.container_number_id == container.id)
+            .first()
+        )
+        if not order or not order.vessel:
+            return ContainerBasicInfo(
+                container_number=container.container_number,
+                vessel_eta=None,
+                origin_port=None,
+                destination_port=None
+            )
+
+        return ContainerBasicInfo(
+            container_number=container.container_number,
+            vessel_eta=order.vessel.vessel_eta,
+            origin_port=order.vessel.origin_port,
+            destination_port=order.vessel.destination_port
+        )
+        # 构建派送信息（按目的地和状态分组）
+        shipment_status = self._build_shipment_status(container)
+        
+        result.append({
+            "basic_info": {
+                "container_number": basic_info.container_number,
+                "vessel_eta": basic_info.vessel_eta.isoformat() if basic_info.vessel_eta else None,
+                "origin_port": basic_info.origin_port,
+                "destination_port": basic_info.destination_port,
+                "history": [{
+                    "date": event["date"] if "date" in event else None,
+                    "description": event.get("description"),
+                    "icon": event.get("icon")
+                } for event in basic_info.history]
+            },
+            "shipment_status": {
+                "unscheduled": [group.dict() for group in shipment_status.unscheduled],
+                "scheduled": [group.dict() for group in shipment_status.scheduled],
+                "shipped": [group.dict() for group in shipment_status.shipped],
+                "arrived": [group.dict() for group in shipment_status.arrived],
+                "with_pod": [group.dict() for group in shipment_status.with_pod]
+            }
+        })
         
         return {"result": result}
 
@@ -341,6 +409,7 @@ class OrderTrackingDate:
     def _build_history_timeline(self, order: Order) -> List[Dict]:
         timeline = []
         if order.created_at:
+            
             timeline.append({
                 "date": order.created_at.isoformat(),
                 "description": "创建订单",
@@ -352,7 +421,18 @@ class OrderTrackingDate:
                 "description": "预计到港",
                 "icon": "fa-ship"
             })
-        #没写完
+        if order.retrieval.actual_retrieval_timestamp:
+            timeline.append({
+                "date": order.retrieval.actual_retrieval_timestamp.isoformat(),
+                "description": "提柜完成",
+                "icon": "fa-ship"
+            })
+        if order.offload.offload_at:
+            timeline.append({
+                "date": order.offload.offload_at.isoformat(),
+                "description": "拆柜完成",
+                "icon": "fa-ship"
+            })
         return timeline
 
     def _build_shipment_status(self, container: str) -> OrderPostportResponse:
@@ -415,3 +495,14 @@ class OrderTrackingDate:
             arrived=build_group(status_groups["arrived"]),
             with_pod=build_group(status_groups["with_pod"])
         )
+class OrderTrackingDate:
+    def __init__(self, user: User, start_date: datetime, end_date: datetime, db_session: Session) -> None:
+        self.user: User = user
+        self.start_date = start_date
+        self.end_date = end_date
+        self.db_session = db_session
+        self.tz = pytz.timezone("Asia/Shanghai")
+    
+    
+
+    

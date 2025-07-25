@@ -12,13 +12,67 @@ class OrderTrackingDateRequest(BaseModel):
     start_date: datetime
     end_date: datetime
 
+class ContainerBasicInfo(BaseModel):
+    """柜子基础信息"""
+    container_number: str
+    vessel_eta: Optional[datetime]
+    origin_port: Optional[str]
+    destination_port: Optional[str]
+    history: Optional[List[dict]] = None
+
+class OrderPreportResponse(BaseModel):
+    """港前响应数据"""
+    #基础信息
+    container_number: str
+    container_type: str
+    weight_lbs: float
+    #航运信息
+    vessel_eta: Optional[datetime]
+    origin_port: Optional[str]
+    destination_port: Optional[str]
+    #订单信息
+    history: List[dict] = None  # 时间线事件列表
+
+class PalletShipmentSummary(BaseModel):
+    destination: Optional[str]
+    PO_ID: Optional[str]
+    delivery_method: Optional[str] = None
+    note: Optional[str] = None
+    delivery_type: Optional[str] = None
+    master_shipment_batch_number: Optional[str] = None
+    is_shipment_schduled: Optional[bool] = None
+    shipment_schduled_at: Optional[datetime] = None
+    shipment_appointment: Optional[datetime] = None
+    is_shipped: Optional[bool] = None
+    shipped_at: Optional[datetime] = None
+    is_arrived: Optional[bool] = None
+    arrived_at: Optional[datetime] = None
+    pod_link: Optional[str] = None
+    pod_uploaded_at: Optional[datetime] = None
+    cbm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    n_pallet: Optional[int] = None
+    pcs: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
+    
+class OrderPostportResponse(BaseModel):
+    """港后响应数据"""
+    shipment: List[PalletShipmentSummary]  
+
+class ContainerDateResponse(BaseModel):
+    """单个柜子的完整响应"""
+    preport: Optional[OrderPreportResponse]
+    postport: Optional[OrderPostportResponse]
 class DateRangeSearchResponse(BaseModel):
-    result: List[Dict]
-    # containers: List[Dict]  
-    # class Config:
-    #     json_encoders = {
-    #         datetime: lambda v: v.isoformat() if v else None
-    #     }
+    containers: List[Dict[str, Any]]
+    class Config:
+        extra = "allow"
+    
+class ContainerDateResponse(BaseModel):
+    basic_info: ContainerBasicInfo
+    preport: Optional[OrderPreportResponse]
+    postport: Optional[OrderPostportResponse]
 class UserResponse(BaseModel):
     zem_name: str
     full_name: str
@@ -58,8 +112,8 @@ class VesselResponse(BaseModel):
     shipping_line: Optional[str]
     vessel: Optional[str]
     voyage: Optional[str]
-    vessel_etd: Optional[date]
-    vessel_eta: Optional[date]
+    vessel_etd: Optional[datetime]
+    vessel_eta: Optional[datetime]
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -129,34 +183,6 @@ class OrderPreportResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class PalletShipmentSummary(BaseModel):
-    destination: Optional[str]
-    PO_ID: Optional[str]
-    delivery_method: Optional[str] = None
-    note: Optional[str] = None
-    delivery_type: Optional[str] = None
-    master_shipment_batch_number: Optional[str] = None
-    is_shipment_schduled: Optional[bool] = None
-    shipment_schduled_at: Optional[datetime] = None
-    shipment_appointment: Optional[datetime] = None
-    is_shipped: Optional[bool] = None
-    shipped_at: Optional[datetime] = None
-    is_arrived: Optional[bool] = None
-    arrived_at: Optional[datetime] = None
-    pod_link: Optional[str] = None
-    pod_uploaded_at: Optional[datetime] = None
-    cbm: Optional[float] = None
-    weight_kg: Optional[float] = None
-    n_pallet: Optional[int] = None
-    pcs: Optional[int] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class OrderPostportResponse(BaseModel):
-    shipment: Optional[list[PalletShipmentSummary]] = []
-
-
 class OrderResponse(BaseModel):
     preport_timenode: Optional[OrderPreportResponse]
     postport_timenode: Optional[OrderPostportResponse]
@@ -167,7 +193,7 @@ class ContainerBasicInfo(BaseModel):
     vessel_eta: Optional[datetime]
     origin_port: Optional[str]
     destination_port: Optional[str]
-    history: List[Dict]  # 时间线事件
+    history: List[Dict] = None # 时间线事件
 
 class DestinationStatusGroup(BaseModel):
     """按目的地和状态分组的货物数据"""
