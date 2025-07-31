@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, Integer, String
+from sqlalchemy import Column, DateTime, Integer, String
 
 from app.data_models.db.base import Base
 
@@ -14,5 +14,5 @@ class Vessel(Base):
     shipping_line = Column(String(255), nullable=True)
     vessel = Column(String(100), nullable=True, index=True)
     voyage = Column(String(100), nullable=True, index=True)
-    vessel_etd = Column(Date, nullable=True)
-    vessel_eta = Column(Date, nullable=True)
+    vessel_etd = Column(DateTime, nullable=True)
+    vessel_eta = Column(DateTime, nullable=True)
