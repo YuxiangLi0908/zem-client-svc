@@ -225,6 +225,7 @@ class OrderTracking:
             for row in results
         ]
         #print('查找数据',data)
+        print(self.db_session.database_url)
         return OrderPostportResponse(shipment=data)
 
     def _convert_tz(self, ts: datetime) -> datetime:
