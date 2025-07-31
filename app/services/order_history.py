@@ -17,6 +17,7 @@ from app.data_models.order_tracking import (
     PalletShipmentSummary,
 )
 
+import os
 
 class OrderTracking:
     def __init__(self, user: User, container_number: str, db_session: Session) -> None:
@@ -34,6 +35,9 @@ class OrderTracking:
         )
 
     def _build_preport_history(self) -> OrderPreportResponse:
+        print(os.environ["DBNAME"])
+        print(os.environ["DBHOST"])
+        print(os.environ["ENV"])
         order_data = (
             self.db_session.query(Order)
             .join(Order.container)
