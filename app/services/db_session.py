@@ -7,6 +7,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 
+os.environ["ENV"] = "production"
+os.environ["DBUSER"] = "mlbbyiueta"
+os.environ["DBPASS"] = "4B418AWV64S5P1Z7$"
+os.environ["DBHOST"] = "zem-warehouse-db.postgres.database.azure.com"
+os.environ["DBPORT"] = "5432"
+os.environ["DBNAME"] = "zem_logistics_database"
+
+
 class DBSession:
     def __init__(self) -> None:
         if os.environ.get("ENV", "local") == "production":

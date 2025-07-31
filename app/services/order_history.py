@@ -200,6 +200,7 @@ class OrderTracking:
                 status_code=404,
                 detail=f"{e}: No shipment history for {self.container_number}",
             )
+        
         data = [
             PalletShipmentSummary(
                 destination=row[0],
