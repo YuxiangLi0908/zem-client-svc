@@ -47,8 +47,8 @@ class VesselResponse(BaseModel):
     shipping_line: Optional[str]
     vessel: Optional[str]
     voyage: Optional[str]
-    vessel_etd: Optional[date]
-    vessel_eta: Optional[date]
+    vessel_etd: Optional[datetime]
+    vessel_eta: Optional[datetime]
 
     model_config = ConfigDict(from_attributes=True)
 
