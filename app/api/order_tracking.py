@@ -16,8 +16,11 @@ async def get_order_full_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(db_session.get_db),
 ) -> OrderResponse:
-    container_number = request.container_number.strip()
+    
+    #container_number = request.container_number.strip()
     order_tracking = OrderTracking(
-        user=current_user, container_number=container_number, db_session=db
+        user=current_user, 
+        db_session=db,
+        container_number=request.container_number.strip()
     )
     return order_tracking.build_order_full_history()

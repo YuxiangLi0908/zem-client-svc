@@ -1,5 +1,6 @@
+#定义了所有Pydantic模型，定义API接口的输入输出格式，自动数据验证，生成API文档
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any, Optional, List, Dict
 
 from pydantic import BaseModel, ConfigDict
 
@@ -7,7 +8,71 @@ from pydantic import BaseModel, ConfigDict
 class OrderTrackingRequest(BaseModel):
     container_number: str
 
+class OrderTrackingDateRequest(BaseModel):
+    start_date: datetime
+    end_date: datetime
 
+class ContainerBasicInfo(BaseModel):
+    """柜子基础信息"""
+    container_number: str
+    vessel_eta: Optional[datetime]
+    origin_port: Optional[str]
+    destination_port: Optional[str]
+    history: Optional[List[dict]] = None
+
+class OrderPreportResponse(BaseModel):
+    """港前响应数据"""
+    #基础信息
+    container_number: str
+    container_type: str
+    weight_lbs: float
+    #航运信息
+    vessel_eta: Optional[datetime]
+    origin_port: Optional[str]
+    destination_port: Optional[str]
+    #订单信息
+    history: List[dict] = None  # 时间线事件列表
+
+class PalletShipmentSummary(BaseModel):
+    destination: Optional[str]
+    PO_ID: Optional[str]
+    delivery_method: Optional[str] = None
+    note: Optional[str] = None
+    delivery_type: Optional[str] = None
+    master_shipment_batch_number: Optional[str] = None
+    is_shipment_schduled: Optional[bool] = None
+    shipment_schduled_at: Optional[datetime] = None
+    shipment_appointment: Optional[datetime] = None
+    is_shipped: Optional[bool] = None
+    shipped_at: Optional[datetime] = None
+    is_arrived: Optional[bool] = None
+    arrived_at: Optional[datetime] = None
+    pod_link: Optional[str] = None
+    pod_uploaded_at: Optional[datetime] = None
+    cbm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    n_pallet: Optional[int] = None
+    pcs: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
+    
+class OrderPostportResponse(BaseModel):
+    """港后响应数据"""
+    shipment: List[PalletShipmentSummary]  
+
+class ContainerDateResponse(BaseModel):
+    """单个柜子的完整响应"""
+    preport: Optional[OrderPreportResponse]
+    postport: Optional[OrderPostportResponse]
+class DateRangeSearchResponse(BaseModel):
+    containers: List[Dict[str, Any]]
+    class Config:
+        extra = "allow"
+    
+class ContainerDateResponse(BaseModel):
+    basic_info: ContainerBasicInfo
+    preport: Optional[OrderPreportResponse]
+    postport: Optional[OrderPostportResponse]
 class UserResponse(BaseModel):
     zem_name: str
     full_name: str
@@ -118,34 +183,35 @@ class OrderPreportResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class PalletShipmentSummary(BaseModel):
-    destination: Optional[str]
-    PO_ID: Optional[str]
-    delivery_method: Optional[str] = None
-    note: Optional[str] = None
-    delivery_type: Optional[str] = None
-    master_shipment_batch_number: Optional[str] = None
-    is_shipment_schduled: Optional[bool] = None
-    shipment_schduled_at: Optional[datetime] = None
-    shipment_appointment: Optional[datetime] = None
-    is_shipped: Optional[bool] = None
-    shipped_at: Optional[datetime] = None
-    is_arrived: Optional[bool] = None
-    arrived_at: Optional[datetime] = None
-    pod_link: Optional[str] = None
-    pod_uploaded_at: Optional[datetime] = None
-    cbm: Optional[float] = None
-    weight_kg: Optional[float] = None
-    n_pallet: Optional[int] = None
-    pcs: Optional[int] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class OrderPostportResponse(BaseModel):
-    shipment: Optional[list[PalletShipmentSummary]] = []
-
-
 class OrderResponse(BaseModel):
     preport_timenode: Optional[OrderPreportResponse]
     postport_timenode: Optional[OrderPostportResponse]
+
+class ContainerBasicInfo(BaseModel):
+    """柜子基础信息（Preport数据）"""
+    container_number: str
+    vessel_eta: Optional[datetime]
+    origin_port: Optional[str]
+    destination_port: Optional[str]
+    history: List[Dict] = None # 时间线事件
+
+class DestinationStatusGroup(BaseModel):
+    """按目的地和状态分组的货物数据"""
+    destination: str
+    PO_IDs: List[str]      # 该目的地下的PO列表
+    total_cbm: float       # 总体积
+    total_weight_kg: float # 总重量
+    pallet_count: int      # 托盘数
+
+class ContainerShipmentStatus(BaseModel):
+    """每个状态组（未预约/已预约/已出库/已送达/已签收）"""
+    unscheduled: List[DestinationStatusGroup]
+    scheduled: List[DestinationStatusGroup]
+    shipped: List[DestinationStatusGroup]
+    arrived: List[DestinationStatusGroup]
+    with_pod: List[DestinationStatusGroup]
+
+class ContainerFullResponse(BaseModel):
+    """最终返回的每柜数据"""
+    basic_info: ContainerBasicInfo          # Preport数据
+    shipment_status: ContainerShipmentStatus # Postport数据
