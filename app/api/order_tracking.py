@@ -21,3 +21,30 @@ async def get_order_full_history(
         user=current_user, container_number=container_number, db_session=db
     )
     return order_tracking.build_order_full_history()
+
+
+@router.get("/user_containers", response_model=list[OrderResponse], name="user_containers")
+async def get_user_containers(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(db_session.get_db),
+) -> list[OrderResponse]:
+    from app.data_models.db.container import Container
+    from app.data_models.db.order import Order
+    
+    # 获取用户的所有容器号
+    container_numbers = db.query(Container.container_number).join(Order).join(Customer).filter(
+        Customer.zem_name == Customer.zem_name
+    ).distinct().all()
+    
+    # 为每个容器号获取详细信息
+    containers = []
+    for (container_number,) in container_numbers:
+        if container_number:
+            order_tracking = OrderTracking(
+                user=current_user, container_number=container_number, db_session=db
+            )
+            container_data = order_tracking.build_order_full_history()
+            if container_data and container_data.preport_timenode:
+                containers.append(container_data)
+    
+    return containers
