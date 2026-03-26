@@ -6,6 +6,7 @@ from app.data_models.order_tracking import OrderResponse, OrderTrackingRequest
 from app.services.db_session import db_session
 from app.services.order_history import OrderTracking
 from app.services.user_auth import get_current_user
+from app.services.order_history import BatchOrderTracking
 
 router = APIRouter()
 
@@ -30,21 +31,25 @@ async def get_user_containers(
 ) -> list[OrderResponse]:
     from app.data_models.db.container import Container
     from app.data_models.db.order import Order
+    from datetime import datetime, timedelta
     
-    # 获取用户的所有容器号
-    container_numbers = db.query(Container.container_number).join(Order).join(User).filter(
-        User.zem_name == current_user.zem_name
-    ).distinct().all()
+    six_months_ago = datetime.utcnow() - timedelta(days=180)
     
-    # 为每个容器号获取详细信息
-    containers = []
-    for (container_number,) in container_numbers:
-        if container_number:
-            order_tracking = OrderTracking(
-                user=current_user, container_number=container_number, db_session=db
-            )
-            container_data = order_tracking.build_order_full_history()
-            if container_data and container_data.preport_timenode:
-                containers.append(container_data)
+    # 获取用户过去六个月内的所有容器号
+    container_query = db.query(Container.container_number).join(Order).join(User).filter(
+        User.zem_name == current_user.zem_name,
+        Order.created_at >= six_months_ago
+    ).distinct()
     
-    return containers
+    container_numbers = [cn for (cn,) in container_query.all() if cn]
+    
+    if not container_numbers:
+        return []
+    
+    # 使用批量查询
+    batch_tracking = BatchOrderTracking(
+        user=current_user,
+        db_session=db
+    )
+    
+    return batch_tracking.build_all_orders(container_numbers)
