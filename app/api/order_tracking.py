@@ -32,8 +32,8 @@ async def get_user_containers(
     from app.data_models.db.order import Order
     
     # 获取用户的所有容器号
-    container_numbers = db.query(Container.container_number).join(Order).join(Customer).filter(
-        Customer.zem_name == Customer.zem_name
+    container_numbers = db.query(Container.container_number).join(Order).join(User).filter(
+        User.zem_name == current_user.zem_name
     ).distinct().all()
     
     # 为每个容器号获取详细信息
