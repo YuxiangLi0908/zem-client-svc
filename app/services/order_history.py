@@ -290,121 +290,134 @@ class BatchOrderTracking:
         self.tz = pytz.timezone("Asia/Shanghai")
     
     def build_all_orders(self, container_numbers: list) -> list[OrderResponse]:
+        import traceback
         from datetime import datetime, timedelta
         
-        six_months_ago = datetime.utcnow() - timedelta(days=180)
-        
-        # 批量查询preport数据
-        order_query = (
-            self.db_session.query(Order)
-            .join(Order.container)
-            .join(Order.user)
-            .options(
-                joinedload(Order.user),
-                joinedload(Order.container),
-                joinedload(Order.warehouse),
-                joinedload(Order.vessel),
-                joinedload(Order.retrieval),
-                joinedload(Order.offload),
-            )
-            .filter(
-                Container.container_number.in_(container_numbers),
-                Order.created_at >= six_months_ago
-            )
-        )
-        
-        if self.user.username != "superuser":
-            order_query = order_query.filter(User.zem_name == self.user.zem_name)
-        
-        orders = order_query.all()
-        
-        if not orders:
-            return []
-        
-        # 收集所有container_number
-        found_container_numbers = [order.container.container_number for order in orders if order.container]
-        
-        # 批量查询postport数据
-        postport_results = (
-            self.db_session.query(
-                Container.container_number,
-                Pallet.destination,
-                Pallet.PO_ID,
-                Pallet.delivery_method,
-                Pallet.note,
-                Pallet.delivery_type,
-                Shipment.shipment_batch_number,
-                Shipment.is_shipment_schduled,
-                Shipment.shipment_schduled_at,
-                Shipment.shipment_appointment_utc,
-                Shipment.is_shipped,
-                Shipment.shipped_at_utc,
-                Shipment.is_arrived,
-                Shipment.arrived_at_utc,
-                Shipment.pod_link,
-                Shipment.pod_uploaded_at,
-                func.round(cast(func.sum(Pallet.cbm), Numeric), 4).label("cbm"),
-                func.round(
-                    cast(func.sum(Pallet.weight_lbs) / 2.20462, Numeric), 2
-                ).label("weight_kg"),
-                func.count(distinct(Pallet.id)).label("n_pallet"),
-                func.sum(Pallet.pcs).label("pcs"),
-            )
-            .select_from(Pallet)
-            .join(Pallet.container)
-            .outerjoin(Pallet.shipment)
-            .filter(Container.container_number.in_(found_container_numbers))
-            .group_by(
-                Container.container_number,
-                Pallet.destination,
-                Pallet.PO_ID,
-                Pallet.delivery_method,
-                Pallet.note,
-                Pallet.delivery_type,
-                Shipment.shipment_batch_number,
-                Shipment.is_shipment_schduled,
-                Shipment.shipment_schduled_at,
-                Shipment.shipment_appointment_utc,
-                Shipment.is_shipped,
-                Shipment.shipped_at_utc,
-                Shipment.is_arrived,
-                Shipment.arrived_at_utc,
-                Shipment.pod_link,
-                Shipment.pod_uploaded_at,
-            )
-            .all()
-        )
-        
-        # 按container_number分组postport数据
-        postport_by_container = {}
-        for row in postport_results:
-            cn = row[0]
-            if cn not in postport_by_container:
-                postport_by_container[cn] = []
-            postport_by_container[cn].append(row[1:])
-        
-        # 构建响应
-        containers = []
-        for order in orders:
-            if not order.container:
-                continue
+        try:
+            six_months_ago = datetime.utcnow() - timedelta(days=180)
             
-            # 构建preport
-            preport = self._build_single_preport(order)
-            if not preport:
-                continue
+            print(f"BatchOrderTracking.build_all_orders called with {len(container_numbers)} containers")
             
-            # 构建postport
-            cn = order.container.container_number
-            postport_rows = postport_by_container.get(cn, [])
-            postport = self._build_single_postport(postport_rows)
+            # 批量查询preport数据
+            order_query = (
+                self.db_session.query(Order)
+                .join(Order.container)
+                .join(Order.user)
+                .options(
+                    joinedload(Order.user),
+                    joinedload(Order.container),
+                    joinedload(Order.warehouse),
+                    joinedload(Order.vessel),
+                    joinedload(Order.retrieval),
+                    joinedload(Order.offload),
+                )
+                .filter(
+                    Container.container_number.in_(container_numbers),
+                    Order.created_at >= six_months_ago
+                )
+            )
             
-            containers.append(OrderResponse(
-                preport_timenode=preport,
-                postport_timenode=postport,
-            ))
-        
-        return containers
+            if self.user.username != "superuser":
+                order_query = order_query.filter(User.zem_name == self.user.zem_name)
+            
+            orders = order_query.all()
+            print(f"Found {len(orders)} orders from database")
+            
+            if not orders:
+                return []
+            
+            # 收集所有container_number
+            found_container_numbers = [order.container.container_number for order in orders if order.container]
+            print(f"Found {len(found_container_numbers)} container numbers")
+            
+            # 批量查询postport数据
+            postport_results = (
+                self.db_session.query(
+                    Container.container_number,
+                    Pallet.destination,
+                    Pallet.PO_ID,
+                    Pallet.delivery_method,
+                    Pallet.note,
+                    Pallet.delivery_type,
+                    Shipment.shipment_batch_number,
+                    Shipment.is_shipment_schduled,
+                    Shipment.shipment_schduled_at,
+                    Shipment.shipment_appointment_utc,
+                    Shipment.is_shipped,
+                    Shipment.shipped_at_utc,
+                    Shipment.is_arrived,
+                    Shipment.arrived_at_utc,
+                    Shipment.pod_link,
+                    Shipment.pod_uploaded_at,
+                    func.round(cast(func.sum(Pallet.cbm), Numeric), 4).label("cbm"),
+                    func.round(
+                        cast(func.sum(Pallet.weight_lbs) / 2.20462, Numeric), 2
+                    ).label("weight_kg"),
+                    func.count(distinct(Pallet.id)).label("n_pallet"),
+                    func.sum(Pallet.pcs).label("pcs"),
+                )
+                .select_from(Pallet)
+                .join(Pallet.container)
+                .outerjoin(Pallet.shipment)
+                .filter(Container.container_number.in_(found_container_numbers))
+                .group_by(
+                    Container.container_number,
+                    Pallet.destination,
+                    Pallet.PO_ID,
+                    Pallet.delivery_method,
+                    Pallet.note,
+                    Pallet.delivery_type,
+                    Shipment.shipment_batch_number,
+                    Shipment.is_shipment_schduled,
+                    Shipment.shipment_schduled_at,
+                    Shipment.shipment_appointment_utc,
+                    Shipment.is_shipped,
+                    Shipment.shipped_at_utc,
+                    Shipment.is_arrived,
+                    Shipment.arrived_at_utc,
+                    Shipment.pod_link,
+                    Shipment.pod_uploaded_at,
+                )
+                .all()
+            )
+            print(f"Found {len(postport_results)} postport results")
+            
+            # 按container_number分组postport数据
+            postport_by_container = {}
+            for row in postport_results:
+                cn = row[0]
+                if cn not in postport_by_container:
+                    postport_by_container[cn] = []
+                postport_by_container[cn].append(row[1:])
+            
+            # 构建响应
+            containers = []
+            for order in orders:
+                if not order.container:
+                    continue
+                
+                # 构建preport
+                preport = self._build_single_preport(order)
+                if not preport:
+                    continue
+                
+                # 构建postport
+                cn = order.container.container_number
+                postport_rows = postport_by_container.get(cn, [])
+                postport = self._build_single_postport(postport_rows)
+                
+                containers.append(OrderResponse(
+                    preport_timenode=preport,
+                    postport_timenode=postport,
+                ))
+            
+            print(f"Built {len(containers)} container responses")
+            return containers
+            
+        except Exception as e:
+            print(f"Error in BatchOrderTracking.build_all_orders: {str(e)}")
+            print(traceback.format_exc())
+            raise
     
     def _build_single_preport(self, order: Order) -> OrderPreportResponse:
         order_data = OrderPreportResponse.model_validate(order).model_dump()
