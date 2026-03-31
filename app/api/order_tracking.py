@@ -47,8 +47,9 @@ async def get_user_containers(
             Order.created_at >= six_months_ago
         )
     else:
+        three_months_ago = datetime.utcnow() - timedelta(days=90)
         container_query = container_query.filter(
-            Order.created_at >= six_months_ago
+            Order.created_at >= three_months_ago
         )
     
     container_query = container_query.distinct()
