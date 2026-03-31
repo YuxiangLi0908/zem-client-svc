@@ -36,11 +36,19 @@ async def get_user_containers(
     six_months_ago = datetime.utcnow() - timedelta(days=180)
     
     # 获取用户过去六个月内的所有容器号
-    container_query = db.query(Container.container_number).join(Order).join(User).filter(
-        User.zem_name == current_user.zem_name,
-        Order.created_at >= six_months_ago
-    ).distinct()
+    container_query = db.query(Container.container_number).join(Order)
     
+    if current_user.username != "superuser":
+        container_query = container_query.join(User).filter(
+            User.zem_name == current_user.zem_name,
+            Order.created_at >= six_months_ago
+        )
+    else:
+        container_query = container_query.filter(
+            Order.created_at >= six_months_ago
+        )
+    
+    container_query = container_query.distinct()
     container_numbers = [cn for (cn,) in container_query.all() if cn]
     
     if not container_numbers:
