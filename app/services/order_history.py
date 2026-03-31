@@ -298,9 +298,7 @@ class BatchOrderTracking:
         order_query = (
             self.db_session.query(Order)
             .join(Order.container)
-            .join(Order.user)
             .options(
-                joinedload(Order.user),
                 joinedload(Order.container),
                 joinedload(Order.warehouse),
                 joinedload(Order.vessel),
@@ -314,7 +312,9 @@ class BatchOrderTracking:
         )
         
         if self.user.username != "superuser":
-            order_query = order_query.filter(User.zem_name == self.user.zem_name)
+            order_query = order_query.join(Order.user).options(joinedload(Order.user)).filter(User.zem_name == self.user.zem_name)
+        else:
+            order_query = order_query.options(joinedload(Order.user))
         
         orders = order_query.all()
         
