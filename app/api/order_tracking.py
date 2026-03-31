@@ -32,36 +32,47 @@ async def get_user_containers(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(db_session.get_db),
 ) -> list[OrderResponse]:
+    import traceback
     from app.data_models.db.container import Container
     from app.data_models.db.order import Order
     from datetime import datetime, timedelta
     
-    six_months_ago = datetime.utcnow() - timedelta(days=180)
-    
-    # 获取用户过去六个月内的所有容器号
-    container_query = db.query(Container.container_number).join(Order)
-    
-    if current_user.username != "superuser":
-        container_query = container_query.join(User).filter(
-            User.zem_name == current_user.zem_name,
-            Order.created_at >= six_months_ago
+    try:
+        six_months_ago = datetime.utcnow() - timedelta(days=180)
+        
+        # 获取用户过去六个月内的所有容器号
+        container_query = db.query(Container.container_number).join(Order)
+        
+        if current_user.username != "superuser":
+            container_query = container_query.join(User).filter(
+                User.zem_name == current_user.zem_name,
+                Order.created_at >= six_months_ago
+            )
+        else:
+            container_query = container_query.filter(
+                Order.created_at >= six_months_ago
+            )
+        
+        container_query = container_query.distinct()
+        container_numbers = [cn for (cn,) in container_query.all() if cn]
+        
+        print(f"Found {len(container_numbers)} containers for user {current_user.username}")
+        
+        if not container_numbers:
+            return []
+        
+        # 使用批量查询
+        batch_tracking = BatchOrderTracking(
+            user=current_user,
+            db_session=db
         )
-    else:
-        three_months_ago = datetime.utcnow() - timedelta(days=90)
-        container_query = container_query.filter(
-            Order.created_at >= three_months_ago
-        )
-    
-    container_query = container_query.distinct()
-    container_numbers = [cn for (cn,) in container_query.all() if cn]
-    
-    if not container_numbers:
-        return []
-    
-    # 使用批量查询
-    batch_tracking = BatchOrderTracking(
-        user=current_user,
-        db_session=db
-    )
-    
-    return batch_tracking.build_all_orders(container_numbers)
+        
+        result = batch_tracking.build_all_orders(container_numbers)
+        print(f"Successfully returned {len(result)} containers")
+        return result
+        
+    except Exception as e:
+        print(f"Error in get_user_containers: {str(e)}")
+        print(traceback.format_exc())
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
