@@ -75,14 +75,14 @@ class ContainerDateResponse(BaseModel):
     postport: Optional[OrderPostportResponse]
 class UserResponse(BaseModel):
     zem_name: str
-    full_name: str
-    zem_code: str
-    email: Optional[str]
-    note: Optional[str]
-    phone: Optional[str]
-    accounting_name: Optional[str]
-    address: Optional[str]
-    username: Optional[str]
+    full_name: Optional[str] = None
+    zem_code: Optional[str] = None
+    email: Optional[str] = None
+    note: Optional[str] = None
+    phone: Optional[str] = None
+    accounting_name: Optional[str] = None
+    address: Optional[str] = None
+    username: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

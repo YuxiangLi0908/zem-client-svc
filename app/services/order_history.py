@@ -297,6 +297,7 @@ class BatchOrderTracking:
             six_months_ago = datetime.utcnow() - timedelta(days=180)
             
             print(f"BatchOrderTracking.build_all_orders called with {len(container_numbers)} containers")
+            print(f"Current user: username={self.user.username}, zem_name={self.user.zem_name}, zem_code={getattr(self.user, 'zem_code', 'N/A')}")
             
             # 批量查询preport数据
             order_query = (
@@ -327,7 +328,13 @@ class BatchOrderTracking:
                 return []
             
             # 收集所有container_number
-            found_container_numbers = [order.container.container_number for order in orders if order.container]
+            found_container_numbers = []
+            for order in orders:
+                if order.container:
+                    found_container_numbers.append(order.container.container_number)
+                    if order.user:
+                        print(f"Order {order.id}: container={order.container.container_number}, user.zem_code={order.user.zem_code}")
+            
             print(f"Found {len(found_container_numbers)} container numbers")
             
             # 批量查询postport数据
@@ -420,7 +427,13 @@ class BatchOrderTracking:
             raise
     
     def _build_single_preport(self, order: Order) -> OrderPreportResponse:
-        order_data = OrderPreportResponse.model_validate(order).model_dump()
+        try:
+            order_data = OrderPreportResponse.model_validate(order).model_dump()
+        except Exception as e:
+            container_num = order.container.container_number if order.container else 'N/A'
+            user_info = f"user.zem_code={order.user.zem_code if order.user else 'N/A'}" if order.user else "user=None"
+            raise Exception(f"Validation error for Order {order.id}, container={container_num}, {user_info}: {str(e)}")
+        
         preport_history = []
         pod = None
         
