@@ -40,6 +40,8 @@ async def get_user_containers(
     try:
         six_months_ago = datetime.utcnow() - timedelta(days=180)
         
+        print(f"[get_user_containers] User: username={current_user.username}, zem_name={current_user.zem_name}, zem_code={getattr(current_user, 'zem_code', 'N/A')}")
+        
         # 获取用户过去六个月内的所有容器号
         container_query = db.query(Container.container_number).join(Order)
         
@@ -56,7 +58,7 @@ async def get_user_containers(
         container_query = container_query.distinct()
         container_numbers = [cn for (cn,) in container_query.all() if cn]
         
-        print(f"Found {len(container_numbers)} containers for user {current_user.username}")
+        print(f"[get_user_containers] Found {len(container_numbers)} containers for user {current_user.username}")
         
         if not container_numbers:
             return []
@@ -68,11 +70,12 @@ async def get_user_containers(
         )
         
         result = batch_tracking.build_all_orders(container_numbers)
-        print(f"Successfully returned {len(result)} containers")
+        print(f"[get_user_containers] Successfully returned {len(result)} containers")
         return result
         
     except Exception as e:
-        print(f"Error in get_user_containers: {str(e)}")
+        error_detail = f"User: {current_user.username}, zem_name: {current_user.zem_name}, zem_code: {getattr(current_user, 'zem_code', 'N/A')}, Error: {str(e)}"
+        print(f"[get_user_containers] Error: {error_detail}")
         print(traceback.format_exc())
         from fastapi import HTTPException
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {error_detail}")
