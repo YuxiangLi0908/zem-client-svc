@@ -397,12 +397,15 @@ def _calculate_transfer_price(details: dict, fee_detail, warehouse: str, request
         is_niche = target_warehouse in niche_warehouses
         pallets = request.pallets
         cbm = request.cbm
-        if cbm and pallets:
-            actual_plt = max( cbm / float(cbm_per_pl_default), pallets)
-        elif cbm:
-            actual_plt = cbm / float(cbm_per_pl_default)
-        elif pallets:
-            actual_plt = pallets
+
+        if cbm:
+            raw_p = cbm / float(cbm_per_pl_default)
+            # 根据固定规则重新计算板数
+            must_pallet = _calculate_total_pallet(
+                raw_p, is_niche, warehouse
+            )
+        if pallets:
+            actual_plt = max(must_pallet,pallets)
         
         
         for category, zones in details.items():
@@ -418,3 +421,51 @@ def _calculate_transfer_price(details: dict, fee_detail, warehouse: str, request
     except Exception as e:
         print(traceback.format_exc())
         return None
+
+def _calculate_total_pallet(
+        self, raw_p: float, is_niche_warehouse: bool, warehouse: str
+    ) -> float:
+        '''板数计算公式'''
+        integer_part = int(raw_p)
+        decimal_part = raw_p - integer_part
+
+        # 尚未启用的新规则
+        is_new_rule = False
+        # 本地派送的按照4.1之前的规则
+        if decimal_part > 0:
+            if is_new_rule:
+                # 按照LA和NJSAV不同规则去计算
+                if warehouse in ['NJ', 'SAV']:
+                    # NJ 或 SAV 仓库
+                    if is_niche_warehouse:
+                        # 冷门仓点
+                        if decimal_part > 0.5:
+                            additional = 1  # 超过0.5进位整板
+                        else:
+                            additional = 0.5  # 不超过0.5按0.5板计费
+                    else:
+                        # 热门仓点
+                        additional = 1 if decimal_part > 0.5 else 0  # 超过0.5进位整板，否则减免
+                    
+                elif warehouse == 'LA':
+                    # LA 仓库
+                    if is_niche_warehouse:
+                        # 冷门仓点：小数点不足一个板，按照1个板计算
+                        additional = 1 if decimal_part > 0 else 0
+                    else:
+                        # 热门仓点
+                        if decimal_part > 0.9:
+                            additional = 1  # 0.9以上按1个板
+                        else:
+                            additional = 0.5  # 0.1-0.9按0.5个板
+            else:  # etd4.1之后的
+                if is_niche_warehouse:
+                    additional = 1 if decimal_part > 0.5 else 0.5
+                else:
+                    additional = 1 if decimal_part > 0.5 else 0
+            total_pallet = integer_part + additional
+        elif decimal_part == 0:
+            total_pallet = integer_part
+        else:
+            ValueError("板数计算错误")
+        return total_pallet
