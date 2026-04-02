@@ -17,8 +17,8 @@ router = APIRouter()
 
 class QuotationRequest(BaseModel):
     destination: str
-    cbm: float
-    pallets: int
+    cbm: Optional[float] = None
+    pallets: Optional[int] = None
     container_type: str
 
 
@@ -45,6 +45,9 @@ async def query_quotation(
     遍历三个仓库(NJ/SAV/LA)，每个仓库查询转运和组合柜两种报价
     """
     try:        
+        if request.cbm is None and request.pallets is None:
+            raise HTTPException(status_code=400, detail="CBM和板数必须至少填写一个")
+        
         warehouses = ["NJ", "SAV", "LA"]
         quotation_types = ["转运", "组合柜"]
         results = []
@@ -125,22 +128,18 @@ def _get_quotation_price(
             return None
 
         # 查找cbm除以的比例
-        query = text("""
-            SELECT id, details, niche_warehouse,
-                JSON_EXTRACT(details, '$.global_rules.cbm_per_pl.default') AS cbm_per_pl_default
-            FROM warehouse_feeDetail
-            WHERE quotation_id_id = :quotation_id
-            AND fee_type = :fee_type
-            LIMIT 1
-        """)
-        result = db.execute(query, {
-            'quotation_id': quotation_master['id'],
-            'fee_type': 'COMBINA_STIPULATE'
-        }).fetchone()
-
-        if result:
-            # 方式1：直接使用查询中提取的字段
-            cbm_per_pl_default = result.cbm_per_pl_default
+        cbm_per_pl_default = 2.2
+        try:
+            details = fee_detail.get('details', {})
+            if details and 'global_rules' in details:
+                global_rules = details['global_rules']
+                if 'cbm_per_pl' in global_rules:
+                    cbm_per_pl = global_rules['cbm_per_pl']
+                    if 'default' in cbm_per_pl:
+                        cbm_per_pl_default = cbm_per_pl['default']
+        except Exception as e:
+            print(f'[_get_quotation_price] 提取cbm_per_pl_default失败: {e}')
+        
         price = _calculate_price(fee_detail, quote_type, warehouse, request, cbm_per_pl_default)
         return price
 
@@ -397,16 +396,23 @@ def _calculate_transfer_price(details: dict, fee_detail, warehouse: str, request
         is_niche = target_warehouse in niche_warehouses
         pallets = request.pallets
         cbm = request.cbm
+        
+        must_pallet = None
+        actual_plt = None
 
         if cbm:
             raw_p = cbm / float(cbm_per_pl_default)
-            # 根据固定规则重新计算板数
-            must_pallet = _calculate_total_pallet(
-                raw_p, is_niche, warehouse
-            )
-        if pallets:
-            actual_plt = max(must_pallet,pallets)
+            must_pallet = _calculate_total_pallet(raw_p, is_niche, warehouse)
         
+        if cbm and not pallets:
+            actual_plt = must_pallet
+        elif pallets and not cbm:
+            actual_plt = pallets
+        elif cbm and pallets:
+            actual_plt = max(must_pallet, pallets)
+        
+        if actual_plt is None:
+            return None
         
         for category, zones in details.items():
             for zone, locations in zones.items():
@@ -422,50 +428,48 @@ def _calculate_transfer_price(details: dict, fee_detail, warehouse: str, request
         print(traceback.format_exc())
         return None
 
-def _calculate_total_pallet(
-        self, raw_p: float, is_niche_warehouse: bool, warehouse: str
-    ) -> float:
-        '''板数计算公式'''
-        integer_part = int(raw_p)
-        decimal_part = raw_p - integer_part
+def _calculate_total_pallet(raw_p: float, is_niche_warehouse: bool, warehouse: str) -> float:
+    '''板数计算公式'''
+    integer_part = int(raw_p)
+    decimal_part = raw_p - integer_part
 
-        # 尚未启用的新规则
-        is_new_rule = False
-        # 本地派送的按照4.1之前的规则
-        if decimal_part > 0:
-            if is_new_rule:
-                # 按照LA和NJSAV不同规则去计算
-                if warehouse in ['NJ', 'SAV']:
-                    # NJ 或 SAV 仓库
-                    if is_niche_warehouse:
-                        # 冷门仓点
-                        if decimal_part > 0.5:
-                            additional = 1  # 超过0.5进位整板
-                        else:
-                            additional = 0.5  # 不超过0.5按0.5板计费
-                    else:
-                        # 热门仓点
-                        additional = 1 if decimal_part > 0.5 else 0  # 超过0.5进位整板，否则减免
-                    
-                elif warehouse == 'LA':
-                    # LA 仓库
-                    if is_niche_warehouse:
-                        # 冷门仓点：小数点不足一个板，按照1个板计算
-                        additional = 1 if decimal_part > 0 else 0
-                    else:
-                        # 热门仓点
-                        if decimal_part > 0.9:
-                            additional = 1  # 0.9以上按1个板
-                        else:
-                            additional = 0.5  # 0.1-0.9按0.5个板
-            else:  # etd4.1之后的
+    # 尚未启用的新规则
+    is_new_rule = False
+    # 本地派送的按照4.1之前的规则
+    if decimal_part > 0:
+        if is_new_rule:
+            # 按照LA和NJSAV不同规则去计算
+            if warehouse in ['NJ', 'SAV']:
+                # NJ 或 SAV 仓库
                 if is_niche_warehouse:
-                    additional = 1 if decimal_part > 0.5 else 0.5
+                    # 冷门仓点
+                    if decimal_part > 0.5:
+                        additional = 1  # 超过0.5进位整板
+                    else:
+                        additional = 0.5  # 不超过0.5按0.5板计费
                 else:
-                    additional = 1 if decimal_part > 0.5 else 0
-            total_pallet = integer_part + additional
-        elif decimal_part == 0:
-            total_pallet = integer_part
-        else:
-            ValueError("板数计算错误")
-        return total_pallet
+                    # 热门仓点
+                    additional = 1 if decimal_part > 0.5 else 0  # 超过0.5进位整板，否则减免
+                
+            elif warehouse == 'LA':
+                # LA 仓库
+                if is_niche_warehouse:
+                    # 冷门仓点：小数点不足一个板，按照1个板计算
+                    additional = 1 if decimal_part > 0 else 0
+                else:
+                    # 热门仓点
+                    if decimal_part > 0.9:
+                        additional = 1  # 0.9以上按1个板
+                    else:
+                        additional = 0.5  # 0.1-0.9按0.5个板
+        else:  # etd4.1之后的
+            if is_niche_warehouse:
+                additional = 1 if decimal_part > 0.5 else 0.5
+            else:
+                additional = 1 if decimal_part > 0.5 else 0
+        total_pallet = integer_part + additional
+    elif decimal_part == 0:
+        total_pallet = integer_part
+    else:
+        raise ValueError("板数计算错误")
+    return total_pallet
