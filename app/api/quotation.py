@@ -30,6 +30,7 @@ class QuotationItem(BaseModel):
 
 
 class QuotationResponse(BaseModel):
+    effective_date: Optional[date] = None
     quotations: list[QuotationItem]
 
 
@@ -43,11 +44,7 @@ async def query_quotation(
     询价API
     遍历三个仓库(NJ/SAV/LA)，每个仓库查询转运和组合柜两种报价
     """
-    try:
-        print('[query_quotation] ===== 开始询价 =====')
-        print(f'[query_quotation] 当前用户: {current_user.username}')
-        print(f'[query_quotation] 请求参数 - 仓点: {request.destination}, CBM: {request.cbm}, 板数: {request.pallets}, 柜型: {request.container_type}')
-        
+    try:        
         warehouses = ["NJ", "SAV", "LA"]
         quotation_types = ["转运", "组合柜"]
         results = []
@@ -55,13 +52,11 @@ async def query_quotation(
         vessel_etd = date.today()
         customer_name = current_user.username
         
-        print(f'[query_quotation] 查询日期: {vessel_etd}')
 
         db.rollback()
         
         quotation_master = _get_quotation_master(db, customer_name, vessel_etd)
         if not quotation_master:
-            print('[query_quotation] 未找到报价主表，所有查询都失败')
             for warehouse in warehouses:
                 for quote_type in quotation_types:
                     results.append(QuotationItem(
@@ -71,12 +66,9 @@ async def query_quotation(
                         message="没有报价"
                     ))
             return QuotationResponse(quotations=results)
-        
-        print(f'[query_quotation] 找到报价主表 - ID: {quotation_master["id"]}, 文件名: {quotation_master["filename"]}')
 
         for warehouse in warehouses:
             for quote_type in quotation_types:
-                print(f'\n[query_quotation] 正在查询 - 仓库: {warehouse}, 类型: {quote_type}')
                 price = None
                 message = None
 
@@ -90,32 +82,28 @@ async def query_quotation(
                     )
 
                     if price is not None:
-                        if quote_type == "转运":
-                            price = price * request.pallets
-                            print(f'[query_quotation] 转运价格计算: 单价 x 板数 = {price}')
-                        print(f'[query_quotation] 查询成功 - 价格: {price}')
+                        
+                        results.append(QuotationItem(
+                            warehouse=warehouse,
+                            type=quote_type,
+                            price=price,
+                            message=None
+                        ))
                     else:
                         message = "没有报价"
-                        print(f'[query_quotation] 查询结果: 没有报价')
 
                 except Exception as e:
                     db.rollback()
                     message = f"查询失败: {str(e)}"
-                    print(f'[query_quotation] 查询异常: {str(e)}')
                     print(traceback.format_exc())
 
-                results.append(QuotationItem(
-                    warehouse=warehouse,
-                    type=quote_type,
-                    price=price,
-                    message=message
-                ))
-
         print('\n[query_quotation] ===== 询价完成 =====')
-        return QuotationResponse(quotations=results)
+        return QuotationResponse(
+            effective_date=quotation_master.get('effective_date'),
+            quotations=results
+        )
 
     except Exception as e:
-        print(f'[query_quotation] 整体异常: {str(e)}')
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"询价失败: {str(e)}")
 
@@ -131,21 +119,32 @@ def _get_quotation_price(
     获取报价价格
     """
     try:
-        print(f'[_get_quotation_price] 开始获取报价 - 仓库: {warehouse}, 类型: {quote_type}')
         
         fee_detail = _get_fee_detail(db, quotation_master['id'], warehouse, quote_type)
         if not fee_detail:
-            print(f'[_get_quotation_price] 未找到费用明细')
             return None
-        
-        print(f'[_get_quotation_price] 找到费用明细 - ID: {fee_detail["id"]}')
 
-        price = _calculate_price(fee_detail, quote_type, warehouse, request)
-        print(f'[_get_quotation_price] 计算结果: {price}')
+        # 查找cbm除以的比例
+        query = text("""
+            SELECT id, details, niche_warehouse,
+                JSON_EXTRACT(details, '$.global_rules.cbm_per_pl.default') AS cbm_per_pl_default
+            FROM warehouse_feeDetail
+            WHERE quotation_id_id = :quotation_id
+            AND fee_type = :fee_type
+            LIMIT 1
+        """)
+        result = db.execute(query, {
+            'quotation_id': quotation_master['id'],
+            'fee_type': 'COMBINA_STIPULATE'
+        }).fetchone()
+
+        if result:
+            # 方式1：直接使用查询中提取的字段
+            cbm_per_pl_default = result.cbm_per_pl_default
+        price = _calculate_price(fee_detail, quote_type, warehouse, request, cbm_per_pl_default)
         return price
 
     except Exception as e:
-        print(f"[_get_quotation_price] 异常: {str(e)}")
         print(traceback.format_exc())
         return None
 
@@ -155,13 +154,10 @@ def _get_quotation_master(db: Session, customer_name: str, vessel_etd: date):
     获取报价表
     """
     try:
-        print(f'[_get_quotation_master] 开始查询报价主表 - 用户: {customer_name}, 日期: {vessel_etd}')
-        
         db.rollback()
         
-        print(f'[_get_quotation_master] 先查询专属用户报价')
         query = text("""
-            SELECT id, filename
+            SELECT id, filename, effective_date
             FROM warehouse_quotationMaster
             WHERE effective_date <= :vessel_etd
             AND is_user_exclusive = true
@@ -176,9 +172,8 @@ def _get_quotation_master(db: Session, customer_name: str, vessel_etd: date):
         }).fetchone()
         
         if not result:
-            print(f'[_get_quotation_master] 未找到专属用户报价，查询公共报价')
             query = text("""
-                SELECT id, filename
+                SELECT id, filename, effective_date
                 FROM warehouse_quotationMaster
                 WHERE effective_date <= :vessel_etd
                 AND is_user_exclusive = false
@@ -191,10 +186,8 @@ def _get_quotation_master(db: Session, customer_name: str, vessel_etd: date):
             }).fetchone()
 
         if result:
-            print(f'[_get_quotation_master] 找到报价主表 - ID: {result[0]}, 文件名: {result[1]}')
-            return {'id': result[0], 'filename': result[1]}
+            return {'id': result[0], 'filename': result[1], 'effective_date': result[2]}
         else:
-            print(f'[_get_quotation_master] 未找到任何报价主表')
             return None
 
     except Exception as e:
@@ -208,9 +201,7 @@ def _get_fee_detail(db: Session, quotation_id: int, warehouse: str, quote_type: 
     """
     获取费用明细
     """
-    try:
-        print(f'[_get_fee_detail] 开始查询费用明细 - 报价ID: {quotation_id}, 仓库: {warehouse}, 类型: {quote_type}')
-        
+    try:      
         fee_types_map = {
             "NJ": {
                 "转运": "NJ_PUBLIC",
@@ -227,7 +218,6 @@ def _get_fee_detail(db: Session, quotation_id: int, warehouse: str, quote_type: 
         }
 
         fee_type = fee_types_map.get(warehouse, {}).get(quote_type)
-        print(f'[_get_fee_detail] 映射的费用类型: {fee_type}')
         
         if not fee_type:
             print(f'[_get_fee_detail] 未找到匹配的费用类型')
@@ -248,44 +238,36 @@ def _get_fee_detail(db: Session, quotation_id: int, warehouse: str, quote_type: 
         }).fetchone()
 
         if result:
-            print(f'[_get_fee_detail] 找到费用明细 - ID: {result[0]}')
-            if result[1]:
-                print(f'[_get_fee_detail] 有details数据')
-            if result[2]:
-                print(f'[_get_fee_detail] 有niche_warehouse数据')
+            #if result[1]:
+                #print(f'[_get_fee_detail] 有details数据')
+            #if result[2]:
+                #print(f'[_get_fee_detail] 有niche_warehouse数据')
             return {'id': result[0], 'details': result[1], 'niche_warehouse': result[2]}
         else:
             print(f'[_get_fee_detail] 未找到费用明细 - 报价ID: {quotation_id}, 费用类型: {fee_type}')
             return None
 
     except Exception as e:
-        print(f"[_get_fee_detail] 异常: {str(e)}")
         print(traceback.format_exc())
         db.rollback()
         return None
 
 
-def _calculate_price(fee_detail, quote_type: str, warehouse: str, request: QuotationRequest) -> Optional[float]:
+def _calculate_price(fee_detail, quote_type: str, warehouse: str, request: QuotationRequest, cbm_per_pl_default) -> Optional[float]:
     """
     计算价格
     """
     try:
         
-        print(f'[_calculate_price] 开始计算价格 - 类型: {quote_type}')
-        
         if not fee_detail or not fee_detail['details']:
-            print(f'[_calculate_price] fee_detail或details为空')
             return None
 
         details = fee_detail.get('details')
-        print(f'[_calculate_price] 解析details成功')
         
         if quote_type == "组合柜":
-            print(f'[_calculate_price] 调用组合柜价格计算')
             return _calculate_combina_price(details, request)
         else:
-            print(f'[_calculate_price] 调用转运价格计算')
-            return _calculate_transfer_price(details, fee_detail, warehouse, request)
+            return _calculate_transfer_price(details, fee_detail, warehouse, request, cbm_per_pl_default)
 
     except Exception as e:
         print(f"[_calculate_price] 异常: {str(e)}")
@@ -361,8 +343,6 @@ def _calculate_combina_price(details: dict, request: QuotationRequest) -> Option
     计算组合柜价格
     """
     try:
-        print(f'[_calculate_combina_price] 开始计算组合柜价格 - 柜型: {request.container_type}')
-        print(f'[_calculate_combina_price] details内容: {details}')
         
         container_type_temp = 0 if "40" in request.container_type else 1
         
@@ -395,51 +375,46 @@ def _calculate_combina_price(details: dict, request: QuotationRequest) -> Option
         return None
 
     except Exception as e:
-        print(f"[_calculate_combina_price] 异常: {str(e)}")
         import traceback
         print(traceback.format_exc())
         return None
 
 
-def _calculate_transfer_price(details: dict, fee_detail, warehouse: str, request: QuotationRequest) -> Optional[float]:
+def _calculate_transfer_price(details: dict, fee_detail, warehouse: str, request: QuotationRequest, cbm_per_pl_default) -> Optional[float]:
     """
     计算转运价格
     """
     try:
         target_warehouse = request.destination
-        print(f'[_calculate_transfer_price] 开始计算转运价格 - 目标仓点: {target_warehouse}')
-        print(f'[_calculate_transfer_price] details内容: {details}')
         
         if "LA" in warehouse and "LA_AMAZON" not in details:
             details = {"LA_AMAZON": details}
-            print(f'[_calculate_transfer_price] 包装LA details')
         
         niche_warehouses = []
         if fee_detail['niche_warehouse']:
             niche_warehouses = fee_detail['niche_warehouse']
-            print(f'[_calculate_transfer_price] 冷门仓点: {niche_warehouses}')
         
         is_niche = target_warehouse in niche_warehouses
-        print(f'[_calculate_transfer_price] 是否冷门仓点: {is_niche}')
+        pallets = request.pallets
+        cbm = request.cbm
+        if cbm and pallets:
+            actual_plt = max( cbm / float(cbm_per_pl_default), pallets)
+        elif cbm:
+            actual_plt = cbm / float(cbm_per_pl_default)
+        elif pallets:
+            actual_plt = pallets
         
-        print(f'[_calculate_transfer_price] 开始遍历details查找仓点')
+        
         for category, zones in details.items():
-            print(f'[_calculate_transfer_price] 分类: {category}')
             for zone, locations in zones.items():
-                print(f'[_calculate_transfer_price] 区域: {zone}, 仓点列表: {locations}')
                 if target_warehouse in locations:
                     try:
-                        price = float(zone)
-                        print(f'[_calculate_transfer_price] 找到匹配仓点，价格: {price}')
+                        price = float(zone) * actual_plt
                         return price
                     except (ValueError, TypeError) as e:
-                        print(f'[_calculate_transfer_price] 转换价格失败: {str(e)}')
                         continue
-        
-        print(f'[_calculate_transfer_price] 未找到目标仓点: {target_warehouse}')
         return None
 
     except Exception as e:
-        print(f"[_calculate_transfer_price] 异常: {str(e)}")
         print(traceback.format_exc())
         return None
