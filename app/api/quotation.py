@@ -1,16 +1,19 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import text, or_
+from sqlalchemy import text, or_, desc
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import traceback
+import os
+import aiohttp
 
 from app.services.db_session import db_session
 from app.services.user_auth import get_current_user
 from app.data_models.db.user import User
 from app.data_models.db.quotation_master import QuotationMaster
 from app.data_models.db.fee_detail import FeeDetail
+from app.data_models.db.maersk_price_rate import MaerskPriceRate
 
 router = APIRouter()
 
@@ -32,6 +35,30 @@ class QuotationItem(BaseModel):
 class QuotationResponse(BaseModel):
     effective_date: Optional[date] = None
     quotations: list[QuotationItem]
+    show_maersk: bool = False
+
+
+class MaerskLineItem(BaseModel):
+    description: str
+    pieces: int
+    length: int
+    width: int
+    height: int
+    weight: int
+
+
+class MaerskQuotationRequest(BaseModel):
+    warehouse: str
+    dest_zip: str
+    ship_date: str
+    need_liftgate: str
+    items: List[MaerskLineItem]
+
+
+class MaerskQuotationResponse(BaseModel):
+    success: bool
+    data: Optional[Dict[str, Any]] = None
+    message: Optional[str] = None
 
 
 @router.post("/query_quotation", response_model=QuotationResponse)
@@ -101,9 +128,12 @@ async def query_quotation(
                     print(traceback.format_exc())
 
         print('\n[query_quotation] ===== 询价完成 =====')
+        show_maersk = len(results) == 0
+        
         return QuotationResponse(
             effective_date=quotation_master.get('effective_date'),
-            quotations=results
+            quotations=results,
+            show_maersk=show_maersk
         )
 
     except Exception as e:
@@ -473,3 +503,169 @@ def _calculate_total_pallet(raw_p: float, is_niche_warehouse: bool, warehouse: s
     else:
         raise ValueError("板数计算错误")
     return total_pallet
+
+
+def get_maersk_increase_percentage(db: Session, current_user: User) -> float:
+    """
+    获取当前用户适用的Maersk涨价百分比
+    """
+    try:
+        username = current_user.username
+        
+        # 先找用户专属的记录，按生效日期降序
+        user_exclusive = db.query(MaerskPriceRate).filter(
+            MaerskPriceRate.is_user_exclusive == True,
+            MaerskPriceRate.exclusive_user == username
+        ).order_by(desc(MaerskPriceRate.effective_date)).first()
+        print('user_exclusive',user_exclusive)
+        if user_exclusive:
+            return user_exclusive.increase_percentage
+        
+        # 找不到则找非用户专属的记录，按生效日期降序
+        general = db.query(MaerskPriceRate).filter(
+            MaerskPriceRate.is_user_exclusive == False
+        ).order_by(desc(MaerskPriceRate.effective_date)).first()
+        print('general',general)
+        if general:
+            return general.increase_percentage
+        
+        # 如果都没有找到，默认不涨价
+        return 1.0
+    except Exception as e:
+        print(f"获取涨价百分比失败: {e}")
+        return 1.0
+
+
+@router.post("/maersk_quotation", response_model=MaerskQuotationResponse)
+async def maersk_quotation(
+    request: MaerskQuotationRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(db_session.get_db),
+) -> MaerskQuotationResponse:
+    """
+    Maersk询价API
+    """
+    try:
+        zip_map = {
+            'NJ': '07001',
+            'SAV': '31326',
+            'LA': '91761'
+        }
+        origin_zip = zip_map.get(request.warehouse)
+        if not origin_zip:
+            return MaerskQuotationResponse(
+                success=False,
+                message=f'无效的仓库代码: {request.warehouse}'
+            )
+        
+        dest_zip = request.dest_zip.strip()
+        ship_date = request.ship_date
+        need_liftgate = 'true' if str(request.need_liftgate).strip() in ('是', 'true', 'True', '1') else 'false'
+        
+        if not all([origin_zip, dest_zip, ship_date]):
+            return MaerskQuotationResponse(
+                success=False,
+                message='基础参数不完整'
+            )
+        
+        line_items = []
+        for item in request.items:
+            line_items.append({
+                "description": item.description or 'Pallet',
+                "pieces": item.pieces,
+                "length": item.length,
+                "width": item.width,
+                "height": item.height,
+                "weight": item.weight
+            })
+        
+        ship_date_formatted = ship_date
+        try:
+            if ship_date and '-' in ship_date:
+                parts = ship_date.split('-')
+                if len(parts) == 3:
+                    ship_date_formatted = f"{parts[1].zfill(2)}/{parts[2].zfill(2)}/{parts[0]}"
+        except Exception:
+            ship_date_formatted = ship_date
+        
+        rating_items = [
+            {
+                "description": it["description"],
+                "pieces": it["pieces"],
+                "length": it["length"],
+                "width": it["width"],
+                "height": it["height"],
+                "weight": it["weight"],
+            }
+            for it in line_items
+        ]
+        
+        payload = {
+            "shipDate": ship_date_formatted,
+            "origin_zip": origin_zip,
+            "dest_zip": dest_zip,
+            "lineItems": rating_items,
+            "liftgate": need_liftgate,
+            "declaredValue": None,
+            "insuranceValue": None,
+            "debrisRemoval": None
+        }
+        api_url = "https://zem-maersk-gateway.kindmoss-a5050a64.eastus.azurecontainerapps.io/rating"
+        api_key = os.environ.get("MAERSK_API_KEY")
+        
+        if not api_key:
+            return MaerskQuotationResponse(
+                success=False,
+                message='未配置API Key'
+            )
+        
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": api_key
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(api_url, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    data['lineItems'] = line_items
+                    data['need_liftgate'] = need_liftgate
+                    
+                    increase_percentage = get_maersk_increase_percentage(db, current_user)
+                    print(f"涨价百分比: {increase_percentage}")
+                    
+                    if 'quotes' in data:
+                        for quote in data['quotes']:
+                            if 'TotalQuote' in quote and quote['TotalQuote'] is not None:
+                                quote['TotalQuote'] = round(quote['TotalQuote'] * increase_percentage, 2)
+                            
+                            if 'Charges' in quote:
+                                for charge in quote['Charges']:
+                                    if 'Amount' in charge and charge['Amount'] is not None:
+                                        charge['Amount'] = round(charge['Amount'] * increase_percentage, 2)
+                    
+                    return MaerskQuotationResponse(
+                        success=True,
+                        data=data
+                    )
+                else:
+                    text = await response.text()
+                    
+                    error_message = f'API调用失败: {response.status} - {text}'
+                    
+                    if 'Unable to find the scale' in text:
+                        error_message = '暂无该地址的报价'
+                    elif 'Unable to find' in text:
+                        error_message = '暂无该地址的报价'
+                    
+                    return MaerskQuotationResponse(
+                        success=False,
+                        message=error_message
+                    )
+    
+    except Exception as e:
+        print(traceback.format_exc())
+        return MaerskQuotationResponse(
+            success=False,
+            message=str(e)
+        )

@@ -11,6 +11,7 @@ def create_tables():
     print("创建的表:")
     print("  - quotation_master")
     print("  - fee_detail")
+    print("  - maersk_price_rate")
 
 
 if __name__ == "__main__":
