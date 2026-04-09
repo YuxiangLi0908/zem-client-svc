@@ -126,12 +126,10 @@ async def query_quotation(
                             warehouse=warehouse,
                             type=quote_type,
                             price=price_result.get('price'),
-                            message=None
+                            message=None,
+                            unit_price=price_result.get('unit_price'),
+                            pallets=price_result.get('pallets')
                         )
-                        if 'unit_price' in price_result:
-                            quotation_item.unit_price = price_result['unit_price']
-                        if 'pallets' in price_result:
-                            quotation_item.pallets = price_result['pallets']
                         results.append(quotation_item)
                     else:
                         message = "没有报价"
