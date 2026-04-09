@@ -30,6 +30,8 @@ class QuotationItem(BaseModel):
     type: str
     price: Optional[float] = None
     message: Optional[str] = None
+    unit_price: Optional[float] = None
+    pallets: Optional[float] = None
 
 
 class QuotationResponse(BaseModel):
@@ -99,26 +101,36 @@ async def query_quotation(
 
         for warehouse in warehouses:
             for quote_type in quotation_types:
-                price = None
+                price_result = None
                 message = None
 
                 try:
-                    price = _get_quotation_price(
+                    uppercase_request = QuotationRequest(
+                        destination=request.destination.upper(),
+                        cbm=request.cbm,
+                        pallets=request.pallets,
+                        container_type=request.container_type
+                    )
+                    
+                    price_result = _get_quotation_price(
                         db=db,
                         quotation_master=quotation_master,
                         warehouse=warehouse,
                         quote_type=quote_type,
-                        request=request
+                        request=uppercase_request
                     )
 
-                    if price is not None:
+                    if price_result is not None:
                         
-                        results.append(QuotationItem(
+                        quotation_item = QuotationItem(
                             warehouse=warehouse,
                             type=quote_type,
-                            price=price,
-                            message=None
-                        ))
+                            price=price_result.get('price'),
+                            message=None,
+                            unit_price=price_result.get('unit_price'),
+                            pallets=price_result.get('pallets')
+                        )
+                        results.append(quotation_item)
                     else:
                         message = "没有报价"
 
@@ -147,7 +159,7 @@ def _get_quotation_price(
     warehouse: str,
     quote_type: str,
     request: QuotationRequest
-) -> Optional[float]:
+) -> Optional[dict]:
     """
     获取报价价格
     """
@@ -170,8 +182,8 @@ def _get_quotation_price(
         except Exception as e:
             print(f'[_get_quotation_price] 提取cbm_per_pl_default失败: {e}')
         
-        price = _calculate_price(fee_detail, quote_type, warehouse, request, cbm_per_pl_default)
-        return price
+        price_result = _calculate_price(fee_detail, quote_type, warehouse, request, cbm_per_pl_default)
+        return price_result
 
     except Exception as e:
         print(traceback.format_exc())
@@ -282,7 +294,7 @@ def _get_fee_detail(db: Session, quotation_id: int, warehouse: str, quote_type: 
         return None
 
 
-def _calculate_price(fee_detail, quote_type: str, warehouse: str, request: QuotationRequest, cbm_per_pl_default) -> Optional[float]:
+def _calculate_price(fee_detail, quote_type: str, warehouse: str, request: QuotationRequest, cbm_per_pl_default) -> Optional[dict]:
     """
     计算价格
     """
@@ -294,7 +306,10 @@ def _calculate_price(fee_detail, quote_type: str, warehouse: str, request: Quota
         details = fee_detail.get('details')
         
         if quote_type == "组合柜":
-            return _calculate_combina_price(details, request)
+            price = _calculate_combina_price(details, request)
+            if price is not None:
+                return {'price': price}
+            return None
         else:
             return _calculate_transfer_price(details, fee_detail, warehouse, request, cbm_per_pl_default)
 
@@ -409,12 +424,12 @@ def _calculate_combina_price(details: dict, request: QuotationRequest) -> Option
         return None
 
 
-def _calculate_transfer_price(details: dict, fee_detail, warehouse: str, request: QuotationRequest, cbm_per_pl_default) -> Optional[float]:
+def _calculate_transfer_price(details: dict, fee_detail, warehouse: str, request: QuotationRequest, cbm_per_pl_default) -> Optional[dict]:
     """
     计算转运价格
     """
     try:
-        target_warehouse = request.destination
+        target_warehouse = request.destination.upper()
         
         if "LA" in warehouse and "LA_AMAZON" not in details:
             details = {"LA_AMAZON": details}
@@ -448,8 +463,13 @@ def _calculate_transfer_price(details: dict, fee_detail, warehouse: str, request
             for zone, locations in zones.items():
                 if target_warehouse in locations:
                     try:
-                        price = float(zone) * actual_plt
-                        return price
+                        unit_price = float(zone)
+                        price = unit_price * actual_plt
+                        return {
+                            'price': price,
+                            'unit_price': unit_price,
+                            'pallets': actual_plt
+                        }
                     except (ValueError, TypeError) as e:
                         continue
         return None
