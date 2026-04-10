@@ -148,11 +148,9 @@ class OrderTracking:
                 preport_history.append(
                     {
                         "status": "PORT_PICKUP_SCHEDULED",
-                        "description": f"预约港口提柜: 预计提柜时间 {self._convert_tz(order_data['retrieval']['target_retrieval_timestamp'])}",                       
+                        "description": f"预约港口提柜: 预计提柜时间 {order_data['retrieval']['target_retrieval_timestamp']}",                       
                         "location": pod,
-                        "timestamp": self._convert_tz(
-                            order_data["retrieval"]["scheduled_at"]
-                        ),
+                        "timestamp": order_data["retrieval"]["scheduled_at"],
                     }
                 )
             if order_data["retrieval"]["arrive_at_destination"]:
@@ -163,9 +161,7 @@ class OrderTracking:
                         "location": order_data["retrieval"][
                             "retrieval_destination_precise"
                         ],
-                        "timestamp": self._convert_tz(
-                            order_data["retrieval"]["arrive_at"]
-                        ),
+                        "timestamp": order_data["retrieval"]["arrive_at"],
                     }
                 )
         if order_data["offload"]:
@@ -474,11 +470,9 @@ class BatchOrderTracking:
                 preport_history.append(
                     {
                         "status": "PORT_PICKUP_SCHEDULED",
-                        "description": f"预约港口提柜: 预计提柜时间 {self._convert_tz(order_data['retrieval']['target_retrieval_timestamp'])}",                       
+                        "description": f"预约港口提柜: 预计提柜时间 {order_data['retrieval']['target_retrieval_timestamp']}",                       
                         "location": pod,
-                        "timestamp": self._convert_tz(
-                            order_data["retrieval"]["scheduled_at"]
-                        ),
+                        "timestamp": order_data["retrieval"]["scheduled_at"],
                     }
                 )
             if order_data["retrieval"]["arrive_at_destination"]:
@@ -489,9 +483,7 @@ class BatchOrderTracking:
                         "location": order_data["retrieval"][
                             "retrieval_destination_precise"
                         ],
-                        "timestamp": self._convert_tz(
-                            order_data["retrieval"]["arrive_at"]
-                        ),
+                        "timestamp": order_data["retrieval"]["arrive_at"],
                     }
                 )
         if order_data["offload"]:
