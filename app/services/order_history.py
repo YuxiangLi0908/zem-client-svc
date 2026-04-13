@@ -133,14 +133,14 @@ class OrderTracking:
                         ),
                     }
                 )
-            if order_data["retrieval"].get("temp_t49_pod_discharge_at") and pod:
+            if order_data["retrieval"].get("planned_release_time") and pod:
                 preport_history.append(
                     {
                         "status": "PORT_UNLOADING",
                         "description": f"放行时间",
                         "location": pod,
                         "timestamp": self._convert_tz(
-                            order_data["retrieval"]["temp_t49_pod_discharge_at"]
+                            order_data["retrieval"]["planned_release_time"]
                         ),
                     }
                 )
@@ -466,14 +466,14 @@ class BatchOrderTracking:
                         ),
                     }
                 )
-            if order_data["retrieval"] and order_data["retrieval"].get("temp_t49_pod_discharge_at"):
+            if order_data["retrieval"] and order_data["retrieval"].get("planned_release_time"):
                 preport_history.append(
                     {
                         "status": "PORT_UNLOADING",
                         "description": f"放行时间",
                         "location": pod,
                         "timestamp": self._convert_tz(
-                            order_data["retrieval"]["temp_t49_pod_discharge_at"]
+                            order_data["retrieval"]["planned_release_time"]
                         ),
                     }
                 )
