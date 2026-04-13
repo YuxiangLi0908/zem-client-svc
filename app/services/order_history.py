@@ -162,13 +162,13 @@ class OrderTracking:
                         "timestamp": order_data["retrieval"].get("scheduled_at"),
                     }
                 )
-            if order_data["retrieval"].get("arrive_at_destination"):
+            if order_data["retrieval"].get("actual_retrieval_timestamp"):
                 preport_history.append(
                     {
                         "status": "ARRIVE_AT_WAREHOUSE",
-                        "description": f"港后提柜完成",
+                        "description": f"提柜完成",
                         "location": order_data["retrieval"].get("retrieval_destination_precise"),
-                        "timestamp": order_data["retrieval"].get("arrive_at_destination"),
+                        "timestamp": order_data["retrieval"].get("actual_retrieval_timestamp"),
                     }
                 )
         if order_data["offload"]:
@@ -495,13 +495,13 @@ class BatchOrderTracking:
                         "timestamp": order_data["retrieval"].get("scheduled_at"),
                     }
                 )
-            if order_data["retrieval"].get("arrive_at_destination"):
+            if order_data["retrieval"].get("actual_retrieval_timestamp"):
                 preport_history.append(
                     {
                         "status": "ARRIVE_AT_WAREHOUSE",
-                        "description": f"港后提柜完成",
+                        "description": f"提柜完成",
                         "location": order_data["retrieval"].get("retrieval_destination_precise"),
-                        "timestamp": order_data["retrieval"].get("arrive_at_destination"),
+                        "timestamp": order_data["retrieval"].get("actual_retrieval_timestamp"),
                     }
                 )
         if order_data["offload"]:
