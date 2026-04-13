@@ -169,7 +169,7 @@ class OrderTracking:
                         "location": order_data["retrieval"][
                             "retrieval_destination_precise"
                         ],
-                        "timestamp": order_data["retrieval"]["arrive_at"],
+                        "timestamp": order_data["retrieval"]["actual_retrieval_timestamp"],
                     }
                 )
         if order_data["offload"]:
