@@ -145,10 +145,18 @@ class OrderTracking:
                 )
         if order_data["retrieval"]:
             if order_data["retrieval"]["scheduled_at"]:
+                lower_time = order_data["retrieval"].get("target_retrieval_timestamp_lower")
+                upper_time = order_data["retrieval"].get("target_retrieval_timestamp")
+                if lower_time and upper_time:
+                    time_range = f"{self._format_date_only(lower_time)} 到 {self._format_date_only(upper_time)}"
+                elif upper_time:
+                    time_range = self._format_date_only(upper_time)
+                else:
+                    time_range = ""
                 preport_history.append(
                     {
                         "status": "PORT_PICKUP_SCHEDULED",
-                        "description": f"预约港口提柜: 预计提柜时间 {order_data['retrieval']['target_retrieval_timestamp']}",                       
+                        "description": f"预约港口提柜: 预计提柜时间 {time_range}",                       
                         "location": pod,
                         "timestamp": order_data["retrieval"]["scheduled_at"],
                     }
@@ -277,6 +285,11 @@ class OrderTracking:
             return ts
         else:
             return ts.astimezone(self.tz).replace(tzinfo=None)
+
+    def _format_date_only(self, ts: datetime) -> str:
+        if not ts:
+            return ''
+        return ts.strftime('%Y-%m-%d')
 
 
 class BatchOrderTracking:
@@ -458,19 +471,27 @@ class BatchOrderTracking:
                 preport_history.append(
                     {
                         "status": "PORT_UNLOADING",
-                        "description": f"港口卸货",
+                        "description": f"放行时间",
                         "location": pod,
                         "timestamp": self._convert_tz(
-                            order_data["retrieval"]["temp_t49_pod_discharge_at"]
+                            order_data["retrieval"]["planned_release_time"]
                         ),
                     }
                 )
         if order_data["retrieval"]:
             if order_data["retrieval"]["scheduled_at"]:
+                lower_time = order_data["retrieval"].get("target_retrieval_timestamp_lower")
+                upper_time = order_data["retrieval"].get("target_retrieval_timestamp")
+                if lower_time and upper_time:
+                    time_range = f"{self._format_date_only(lower_time)} 到 {self._format_date_only(upper_time)}"
+                elif upper_time:
+                    time_range = self._format_date_only(upper_time)
+                else:
+                    time_range = ""
                 preport_history.append(
                     {
                         "status": "PORT_PICKUP_SCHEDULED",
-                        "description": f"预约港口提柜: 预计提柜时间 {order_data['retrieval']['target_retrieval_timestamp']}",                       
+                        "description": f"预约港口提柜: 预计提柜时间 {time_range}",                       
                         "location": pod,
                         "timestamp": order_data["retrieval"]["scheduled_at"],
                     }
@@ -479,11 +500,11 @@ class BatchOrderTracking:
                 preport_history.append(
                     {
                         "status": "ARRIVE_AT_WAREHOUSE",
-                        "description": f"港口提柜完成, 货柜到达目的仓点 {order_data['retrieval']['retrieval_destination_precise']}",
+                        "description": f"港口提柜完成, 到达 {order_data['retrieval']['retrieval_destination_precise']}",
                         "location": order_data["retrieval"][
                             "retrieval_destination_precise"
                         ],
-                        "timestamp": order_data["retrieval"]["arrive_at"],
+                        "timestamp": order_data["retrieval"]["actual_retrieval_timestamp"],
                     }
                 )
         if order_data["offload"]:
@@ -545,3 +566,8 @@ class BatchOrderTracking:
             return ts
         else:
             return ts.astimezone(self.tz).replace(tzinfo=None)
+
+    def _format_date_only(self, ts: datetime) -> str:
+        if not ts:
+            return ''
+        return ts.strftime('%Y-%m-%d')
