@@ -132,14 +132,14 @@ class OrderTracking:
                         ),
                     }
                 )
-            if order_data["retrieval"]["temp_t49_pod_discharge_at"]:
+            if order_data["retrieval"]["planned_release_time"]:
                 preport_history.append(
                     {
                         "status": "PORT_UNLOADING",
                         "description": f"放行时间",
                         "location": order_data["vessel"]["destination_port"],
                         "timestamp": self._convert_tz(
-                            order_data["retrieval"]["temp_t49_pod_discharge_at"]
+                            order_data["retrieval"]["planned_release_time"]
                         ),
                     }
                 )
@@ -158,14 +158,14 @@ class OrderTracking:
                         "status": "PORT_PICKUP_SCHEDULED",
                         "description": f"预计提柜时间 {time_range}",                       
                         "location": pod,
-                        "timestamp": order_data["retrieval"]["scheduled_at"],
+                        "timestamp": order_data["retrieval"]["target_retrieval_timestamp_lower"],
                     }
                 )
-            if order_data["retrieval"]["arrive_at_destination"]:
+            if order_data["retrieval"]["actual_retrieval_timestamp"]:
                 preport_history.append(
                     {
                         "status": "ARRIVE_AT_WAREHOUSE",
-                        "description": f"港口提柜完成, 到达 {order_data['retrieval']['retrieval_destination_precise']}",
+                        "description": f"提柜完成, 到达 {order_data['retrieval']['retrieval_destination_precise']}",
                         "location": order_data["retrieval"][
                             "retrieval_destination_precise"
                         ],
@@ -467,19 +467,19 @@ class BatchOrderTracking:
                         ),
                     }
                 )
-            if order_data["retrieval"] and order_data["retrieval"].get("temp_t49_pod_discharge_at"):
+            if order_data["retrieval"] and order_data["retrieval"].get("planned_release_time"):
                 preport_history.append(
                     {
                         "status": "PORT_UNLOADING",
                         "description": f"放行时间",
                         "location": pod,
                         "timestamp": self._convert_tz(
-                            order_data["retrieval"]["temp_t49_pod_discharge_at"]
+                            order_data["retrieval"]["planned_release_time"]
                         ),
                     }
                 )
         if order_data["retrieval"]:
-            if order_data["retrieval"]["scheduled_at"]:
+            if order_data["retrieval"]["target_retrieval_timestamp_lower"]:
                 lower_time = order_data["retrieval"].get("target_retrieval_timestamp_lower")
                 upper_time = order_data["retrieval"].get("target_retrieval_timestamp")
                 if lower_time and upper_time:
@@ -493,14 +493,14 @@ class BatchOrderTracking:
                         "status": "PORT_PICKUP_SCHEDULED",
                         "description": f"预计提柜时间 {time_range}",                       
                         "location": pod,
-                        "timestamp": order_data["retrieval"]["scheduled_at"],
+                        "timestamp": order_data["retrieval"]["target_retrieval_timestamp_lower"],
                     }
                 )
-            if order_data["retrieval"]["arrive_at_destination"]:
+            if order_data["retrieval"]["actual_retrieval_timestamp"]:
                 preport_history.append(
                     {
                         "status": "ARRIVE_AT_WAREHOUSE",
-                        "description": f"港口提柜完成, 到达 {order_data['retrieval']['retrieval_destination_precise']}",
+                        "description": f"提柜完成, 到达 {order_data['retrieval']['retrieval_destination_precise']}",
                         "location": order_data["retrieval"][
                             "retrieval_destination_precise"
                         ],
