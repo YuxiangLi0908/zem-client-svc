@@ -111,40 +111,41 @@ class OrderTracking:
             })
         preport_history = []
         pod = None
-        if order_data["created_at"]:
+        if order_data.get("created_at"):
+            container_num = order_data.get("container", {}).get("container_number") if order_data.get("container") else None
             preport_history.append(
                 {
                     "status": "ORDER_CREATED",
-                    "description": f"创建订单: {order_data['container']['container_number']}",
-                    "timestamp": self._convert_tz(order_data["created_at"]),
+                    "description": f"创建订单: {container_num}",
+                    "timestamp": self._convert_tz(order_data.get("created_at")),
                 }
             )
-        if order_data["add_to_t49"]:
-            pod = order_data["vessel"]["destination_port"]
-            if order_data["retrieval"].get("temp_t49_pod_arrive_at"):
+        if order_data.get("add_to_t49"):
+            pod = order_data.get("vessel", {}).get("destination_port") if order_data.get("vessel") else None
+            if order_data["retrieval"].get("temp_t49_pod_arrive_at") and pod:
                 preport_history.append(
                     {
                         "status": "ARRIVED_AT_PORT",
-                        "description": f"到达港口: {order_data['vessel']['destination_port']}",
-                        "location": order_data["vessel"]["destination_port"],
+                        "description": f"到达港口: {pod}",
+                        "location": pod,
                         "timestamp": self._convert_tz(
                             order_data["retrieval"]["temp_t49_pod_arrive_at"]
                         ),
                     }
                 )
-            if order_data["retrieval"]["planned_release_time"]:
+            if order_data["retrieval"].get("temp_t49_pod_discharge_at") and pod:
                 preport_history.append(
                     {
                         "status": "PORT_UNLOADING",
                         "description": f"放行时间",
-                        "location": order_data["vessel"]["destination_port"],
+                        "location": pod,
                         "timestamp": self._convert_tz(
-                            order_data["retrieval"]["planned_release_time"]
+                            order_data["retrieval"]["temp_t49_pod_discharge_at"]
                         ),
                     }
                 )
         if order_data["retrieval"]:
-            if order_data["retrieval"]["scheduled_at"]:
+            if order_data["retrieval"].get("scheduled_at"):
                 lower_time = order_data["retrieval"].get("target_retrieval_timestamp_lower")
                 upper_time = order_data["retrieval"].get("target_retrieval_timestamp")
                 if lower_time and upper_time:
@@ -158,42 +159,39 @@ class OrderTracking:
                         "status": "PORT_PICKUP_SCHEDULED",
                         "description": f"预计提柜时间 {time_range}",                       
                         "location": pod,
-                        "timestamp": order_data["retrieval"]["target_retrieval_timestamp_lower"],
+                        "timestamp": order_data["retrieval"].get("scheduled_at"),
                     }
                 )
-            if order_data["retrieval"]["actual_retrieval_timestamp"]:
+            if order_data["retrieval"].get("arrive_at_destination"):
                 preport_history.append(
                     {
                         "status": "ARRIVE_AT_WAREHOUSE",
-                        "description": f"提柜完成, 到达 {order_data['retrieval']['retrieval_destination_precise']}",
-                        "location": order_data["retrieval"][
-                            "retrieval_destination_precise"
-                        ],
-                        "timestamp": order_data["retrieval"]["actual_retrieval_timestamp"],
+                        "description": f"港后提柜完成",
+                        "location": order_data["retrieval"].get("retrieval_destination_precise"),
+                        "timestamp": order_data["retrieval"].get("arrive_at_destination"),
                     }
                 )
         if order_data["offload"]:
-            if order_data["offload"]["offload_at"]:
+            if order_data["offload"].get("offload_at"):
+                retrieval_dest = order_data["retrieval"].get("retrieval_destination_precise") if order_data.get("retrieval") else None
                 preport_history.append(
                     {
                         "status": "OFFLOAD",
                         "description": "拆柜完成",
-                        "location": order_data["retrieval"][
-                            "retrieval_destination_precise"
-                        ],
+                        "location": retrieval_dest,
                         "timestamp": self._convert_tz(
-                            order_data["offload"]["offload_at"]
+                            order_data["offload"].get("offload_at")
                         ),
                     }
                 )
-            if order_data["retrieval"]["empty_returned"]:
+            if order_data["retrieval"] and order_data["retrieval"].get("empty_returned"):
                 preport_history.append(
                     {
                         "status": "EMPTY_RETURN",
                         "description": f"已归还空箱",
                         "timestamp": self._convert_tz(
                             order_data["retrieval"]["empty_returned_at"]
-                        ),
+                        ) if order_data["retrieval"].get("empty_returned_at") else None,
                     }
                 )
         order_data["history"] = preport_history
@@ -446,40 +444,41 @@ class BatchOrderTracking:
         preport_history = []
         pod = None
         
-        if order_data["created_at"]:
+        if order_data.get("created_at"):
+            container_num = order_data.get("container", {}).get("container_number") if order_data.get("container") else None
             preport_history.append(
                 {
                     "status": "ORDER_CREATED",
-                    "description": f"创建订单: {order_data['container']['container_number']}",
-                    "timestamp": self._convert_tz(order_data["created_at"]),
+                    "description": f"创建订单: {container_num}",
+                    "timestamp": self._convert_tz(order_data.get("created_at")),
                 }
             )
-        if order_data["add_to_t49"]:
-            pod = order_data["vessel"]["destination_port"] if order_data.get("vessel") else None
-            if order_data["retrieval"] and order_data["retrieval"]["temp_t49_pod_arrive_at"]:
+        if order_data.get("add_to_t49"):
+            pod = order_data.get("vessel", {}).get("destination_port") if order_data.get("vessel") else None
+            if order_data["retrieval"] and order_data["retrieval"].get("temp_t49_pod_arrive_at") and pod:
                 preport_history.append(
                     {
                         "status": "ARRIVED_AT_PORT",
-                        "description": f"到达港口: {order_data['vessel']['destination_port']}" if order_data.get("vessel") else "到达港口",
+                        "description": f"到达港口: {pod}",
                         "location": pod,
                         "timestamp": self._convert_tz(
                             order_data["retrieval"]["temp_t49_pod_arrive_at"]
                         ),
                     }
                 )
-            if order_data["retrieval"] and order_data["retrieval"].get("planned_release_time"):
+            if order_data["retrieval"] and order_data["retrieval"].get("temp_t49_pod_discharge_at"):
                 preport_history.append(
                     {
                         "status": "PORT_UNLOADING",
                         "description": f"放行时间",
                         "location": pod,
                         "timestamp": self._convert_tz(
-                            order_data["retrieval"]["planned_release_time"]
+                            order_data["retrieval"]["temp_t49_pod_discharge_at"]
                         ),
                     }
                 )
         if order_data["retrieval"]:
-            if order_data["retrieval"]["target_retrieval_timestamp_lower"]:
+            if order_data["retrieval"].get("scheduled_at"):
                 lower_time = order_data["retrieval"].get("target_retrieval_timestamp_lower")
                 upper_time = order_data["retrieval"].get("target_retrieval_timestamp")
                 if lower_time and upper_time:
@@ -493,42 +492,39 @@ class BatchOrderTracking:
                         "status": "PORT_PICKUP_SCHEDULED",
                         "description": f"预计提柜时间 {time_range}",                       
                         "location": pod,
-                        "timestamp": order_data["retrieval"]["target_retrieval_timestamp_lower"],
+                        "timestamp": order_data["retrieval"].get("scheduled_at"),
                     }
                 )
-            if order_data["retrieval"]["actual_retrieval_timestamp"]:
+            if order_data["retrieval"].get("arrive_at_destination"):
                 preport_history.append(
                     {
                         "status": "ARRIVE_AT_WAREHOUSE",
-                        "description": f"提柜完成, 到达 {order_data['retrieval']['retrieval_destination_precise']}",
-                        "location": order_data["retrieval"][
-                            "retrieval_destination_precise"
-                        ],
-                        "timestamp": order_data["retrieval"]["actual_retrieval_timestamp"],
+                        "description": f"港后提柜完成",
+                        "location": order_data["retrieval"].get("retrieval_destination_precise"),
+                        "timestamp": order_data["retrieval"].get("arrive_at_destination"),
                     }
                 )
         if order_data["offload"]:
-            if order_data["offload"]["offload_at"]:
+            if order_data["offload"].get("offload_at"):
+                retrieval_dest = order_data["retrieval"].get("retrieval_destination_precise") if order_data.get("retrieval") else None
                 preport_history.append(
                     {
                         "status": "OFFLOAD",
                         "description": "拆柜完成",
-                        "location": order_data["retrieval"][
-                            "retrieval_destination_precise"
-                        ] if order_data.get("retrieval") else None,
+                        "location": retrieval_dest,
                         "timestamp": self._convert_tz(
-                            order_data["offload"]["offload_at"]
+                            order_data["offload"].get("offload_at")
                         ),
                     }
                 )
-            if order_data["retrieval"] and order_data["retrieval"]["empty_returned"]:
+            if order_data["retrieval"] and order_data["retrieval"].get("empty_returned"):
                 preport_history.append(
                     {
                         "status": "EMPTY_RETURN",
                         "description": f"已归还空箱",
                         "timestamp": self._convert_tz(
                             order_data["retrieval"]["empty_returned_at"]
-                        ),
+                        ) if order_data["retrieval"].get("empty_returned_at") else None,
                     }
                 )
         order_data["history"] = preport_history
