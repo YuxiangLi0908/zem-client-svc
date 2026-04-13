@@ -145,7 +145,7 @@ class OrderTracking:
                     }
                 )
         if order_data["retrieval"]:
-            if order_data["retrieval"].get("scheduled_at"):
+            if order_data["retrieval"].get("target_retrieval_timestamp_lower"):
                 lower_time = order_data["retrieval"].get("target_retrieval_timestamp_lower")
                 upper_time = order_data["retrieval"].get("target_retrieval_timestamp")
                 if lower_time and upper_time:
@@ -159,7 +159,7 @@ class OrderTracking:
                         "status": "PORT_PICKUP_SCHEDULED",
                         "description": f"预计提柜时间 {time_range}",                       
                         "location": pod,
-                        "timestamp": order_data["retrieval"].get("scheduled_at"),
+                        "timestamp": order_data["retrieval"].get("target_retrieval_timestamp_lower"),
                     }
                 )
             if order_data["retrieval"].get("actual_retrieval_timestamp"):
@@ -478,7 +478,7 @@ class BatchOrderTracking:
                     }
                 )
         if order_data["retrieval"]:
-            if order_data["retrieval"].get("scheduled_at"):
+            if order_data["retrieval"].get("target_retrieval_timestamp_lower"):
                 lower_time = order_data["retrieval"].get("target_retrieval_timestamp_lower")
                 upper_time = order_data["retrieval"].get("target_retrieval_timestamp")
                 if lower_time and upper_time:
@@ -492,7 +492,7 @@ class BatchOrderTracking:
                         "status": "PORT_PICKUP_SCHEDULED",
                         "description": f"预计提柜时间 {time_range}",                       
                         "location": pod,
-                        "timestamp": order_data["retrieval"].get("scheduled_at"),
+                        "timestamp": order_data["retrieval"].get("target_retrieval_timestamp_lower"),
                     }
                 )
             if order_data["retrieval"].get("actual_retrieval_timestamp"):
