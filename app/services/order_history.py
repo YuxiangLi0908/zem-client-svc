@@ -121,14 +121,14 @@ class OrderTracking:
             )
         if order_data["add_to_t49"]:
             pod = order_data["vessel"]["destination_port"]
-            if order_data["retrieval"]["planned_release_time"]:
+            if order_data["retrieval"].get("temp_t49_pod_arrive_at"):
                 preport_history.append(
                     {
                         "status": "ARRIVED_AT_PORT",
                         "description": f"到达港口: {order_data['vessel']['destination_port']}",
                         "location": order_data["vessel"]["destination_port"],
                         "timestamp": self._convert_tz(
-                            order_data["retrieval"]["planned_release_time"]
+                            order_data["retrieval"]["temp_t49_pod_arrive_at"]
                         ),
                     }
                 )
@@ -156,9 +156,9 @@ class OrderTracking:
                 preport_history.append(
                     {
                         "status": "PORT_PICKUP_SCHEDULED",
-                        "description": "预计提柜时间",                       
+                        "description": f"预计提柜时间 {time_range}",                       
                         "location": pod,
-                        "timestamp": time_range,
+                        "timestamp": order_data["retrieval"]["scheduled_at"],
                     }
                 )
             if order_data["retrieval"]["arrive_at_destination"]:
@@ -467,14 +467,14 @@ class BatchOrderTracking:
                         ),
                     }
                 )
-            if order_data["retrieval"] and order_data["retrieval"]["planned_release_time"]:
+            if order_data["retrieval"] and order_data["retrieval"].get("temp_t49_pod_discharge_at"):
                 preport_history.append(
                     {
                         "status": "PORT_UNLOADING",
                         "description": f"放行时间",
                         "location": pod,
                         "timestamp": self._convert_tz(
-                            order_data["retrieval"]["planned_release_time"]
+                            order_data["retrieval"]["temp_t49_pod_discharge_at"]
                         ),
                     }
                 )
@@ -491,9 +491,9 @@ class BatchOrderTracking:
                 preport_history.append(
                     {
                         "status": "PORT_PICKUP_SCHEDULED",
-                        "description": "预计提柜时间",                       
+                        "description": f"预计提柜时间 {time_range}",                       
                         "location": pod,
-                        "timestamp": time_range,
+                        "timestamp": order_data["retrieval"]["scheduled_at"],
                     }
                 )
             if order_data["retrieval"]["arrive_at_destination"]:
