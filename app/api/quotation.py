@@ -634,6 +634,7 @@ async def maersk_quotation(
         api_key = os.environ.get("MAERSK_API_KEY")
         
         if not api_key:
+            api_key ='2Tdtqrj4dqnooXIJi4ReCVrMGW3ehJnC'
             return MaerskQuotationResponse(
                 success=False,
                 message='未配置API Key'
