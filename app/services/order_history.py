@@ -216,6 +216,7 @@ class OrderTracking:
                     Shipment.arrived_at_utc.label("arrived_at"),
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
+                    Shipment.shipping_order_link,
                     func.round(cast(func.sum(Pallet.cbm), Numeric), 4).label("cbm"),
                     func.round(
                         cast(func.sum(Pallet.weight_lbs) / 2.20462, Numeric), 2
@@ -242,6 +243,7 @@ class OrderTracking:
                     Shipment.arrived_at_utc,
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
+                    Shipment.shipping_order_link,
                 )
                 .all()
             )
@@ -262,13 +264,14 @@ class OrderTracking:
                 master_shipment_batch_number=row[5],
                 is_shipment_schduled=row[6],
                 shipment_schduled_at=self._convert_tz(row[7]),
-                shipment_appointment=self._convert_tz(row[8]),
+                shipment_appointment=row[8],
                 is_shipped=row[9],
                 shipped_at=self._convert_tz(row[10]),
                 is_arrived=row[11],
                 arrived_at=self._convert_tz(row[12]),
                 pod_link=row[13],
                 pod_uploaded_at=self._convert_tz(row[14]),
+                shipping_order_link=row[15],
                 cbm=row[15],
                 weight_kg=row[16],
                 n_pallet=row[17],
@@ -363,6 +366,7 @@ class BatchOrderTracking:
                     Shipment.arrived_at_utc,
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
+                    Shipment.shipping_order_link,
                     func.round(cast(func.sum(Pallet.cbm), Numeric), 4).label("cbm"),
                     func.round(
                         cast(func.sum(Pallet.weight_lbs) / 2.20462, Numeric), 2
@@ -391,6 +395,7 @@ class BatchOrderTracking:
                     Shipment.arrived_at_utc,
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
+                    Shipment.shipping_order_link,
                 )
                 .all()
             )
@@ -541,13 +546,14 @@ class BatchOrderTracking:
                 master_shipment_batch_number=row[5],
                 is_shipment_schduled=row[6],
                 shipment_schduled_at=self._convert_tz(row[7]),
-                shipment_appointment=self._convert_tz(row[8]),
+                shipment_appointment=row[8],
                 is_shipped=row[9],
                 shipped_at=self._convert_tz(row[10]),
                 is_arrived=row[11],
                 arrived_at=self._convert_tz(row[12]),
                 pod_link=row[13],
                 pod_uploaded_at=self._convert_tz(row[14]),
+                shipping_order_link=row[15],
                 cbm=row[15],
                 weight_kg=row[16],
                 n_pallet=row[17],
