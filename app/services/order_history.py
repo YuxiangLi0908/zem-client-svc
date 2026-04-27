@@ -272,10 +272,10 @@ class OrderTracking:
                 pod_link=row[13],
                 pod_uploaded_at=self._convert_tz(row[14]),
                 shipping_order_link=row[15],
-                cbm=row[15],
-                weight_kg=row[16],
-                n_pallet=row[17],
-                pcs=row[18],
+                cbm=row[16],
+                weight_kg=row[17],
+                n_pallet=row[18],
+                pcs=row[19],
             )
             for row in raw_results
         ]
@@ -554,10 +554,10 @@ class BatchOrderTracking:
                 pod_link=row[13],
                 pod_uploaded_at=self._convert_tz(row[14]),
                 shipping_order_link=row[15],
-                cbm=row[15],
-                weight_kg=row[16],
-                n_pallet=row[17],
-                pcs=row[18],
+                cbm=row[16],
+                weight_kg=row[17],
+                n_pallet=row[18],
+                pcs=row[19],
             )
             for row in rows
         ]
