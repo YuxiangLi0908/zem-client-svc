@@ -54,6 +54,8 @@ class PalletShipmentSummary(BaseModel):
     weight_kg: Optional[float] = None
     n_pallet: Optional[float] = None
     pcs: Optional[float] = None
+    exception_type: Optional[str] = None
+    exception_reason: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
     

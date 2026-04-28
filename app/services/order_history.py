@@ -11,6 +11,7 @@ from app.data_models.db.vessel import Vessel
 from app.data_models.db.order import Order
 from app.data_models.db.pallet import Pallet
 from app.data_models.db.shipment import Shipment
+from app.data_models.db.pallet_exception import PalletException
 from app.data_models.db.user import User
 from app.data_models.order_tracking import (
     OrderPostportResponse,
@@ -217,6 +218,8 @@ class OrderTracking:
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
                     Shipment.shipping_order_link,
+                    PalletException.exception_type,
+                    PalletException.exception_reason,
                     func.round(cast(func.sum(Pallet.cbm), Numeric), 4).label("cbm"),
                     func.round(
                         cast(func.sum(Pallet.weight_lbs) / 2.20462, Numeric), 2
@@ -226,6 +229,7 @@ class OrderTracking:
                 )
                 .join(Pallet.container)
                 .outerjoin(Pallet.shipment)
+                .outerjoin(Pallet.exceptions)
                 .filter(Container.container_number == container_number)
                 .group_by(
                     Pallet.destination,
@@ -244,6 +248,8 @@ class OrderTracking:
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
                     Shipment.shipping_order_link,
+                    PalletException.exception_type,
+                    PalletException.exception_reason,
                 )
                 .all()
             )
@@ -272,10 +278,12 @@ class OrderTracking:
                 pod_link=row[13],
                 pod_uploaded_at=self._convert_tz(row[14]),
                 shipping_order_link=row[15],
-                cbm=row[16],
-                weight_kg=row[17],
-                n_pallet=row[18],
-                pcs=row[19],
+                exception_type=row[16],
+                exception_reason=row[17],
+                cbm=row[18],
+                weight_kg=row[19],
+                n_pallet=row[20],
+                pcs=row[21],
             )
             for row in raw_results
         ]
@@ -367,6 +375,8 @@ class BatchOrderTracking:
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
                     Shipment.shipping_order_link,
+                    PalletException.exception_type,
+                    PalletException.exception_reason,
                     func.round(cast(func.sum(Pallet.cbm), Numeric), 4).label("cbm"),
                     func.round(
                         cast(func.sum(Pallet.weight_lbs) / 2.20462, Numeric), 2
@@ -377,6 +387,7 @@ class BatchOrderTracking:
                 .select_from(Pallet)
                 .join(Pallet.container)
                 .outerjoin(Pallet.shipment)
+                .outerjoin(Pallet.exceptions)
                 .filter(Container.container_number.in_(found_container_numbers))
                 .group_by(
                     Container.container_number,
@@ -396,6 +407,8 @@ class BatchOrderTracking:
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
                     Shipment.shipping_order_link,
+                    PalletException.exception_type,
+                    PalletException.exception_reason,
                 )
                 .all()
             )
@@ -554,10 +567,12 @@ class BatchOrderTracking:
                 pod_link=row[13],
                 pod_uploaded_at=self._convert_tz(row[14]),
                 shipping_order_link=row[15],
-                cbm=row[16],
-                weight_kg=row[17],
-                n_pallet=row[18],
-                pcs=row[19],
+                exception_type=row[16],
+                exception_reason=row[17],
+                cbm=row[18],
+                weight_kg=row[19],
+                n_pallet=row[20],
+                pcs=row[21],
             )
             for row in rows
         ]
