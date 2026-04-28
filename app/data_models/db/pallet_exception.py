@@ -19,7 +19,6 @@ class PalletException(Base):
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
     # Relationships
-    pallet = relationship("Pallet", backref="exceptions")
 
     __table_args__ = (
         Index("ix_pallet_exception_pallet_id", "pallet_id"),

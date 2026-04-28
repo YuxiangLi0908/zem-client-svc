@@ -54,5 +54,6 @@ class Pallet(Base):
     )
     # transfer = relationship("TransferLocation", back_populates="pallets")
     # invoice_delivery = relationship("InvoiceDelivery", back_populates="pallets")
+    exceptions = relationship("PalletException", backref="pallet")
 
     __table_args__ = (Index("ix_pallet_PO_ID", "PO_ID"),)
