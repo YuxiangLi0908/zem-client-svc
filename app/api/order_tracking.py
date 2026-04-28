@@ -18,13 +18,19 @@ async def get_order_full_history(
     db: Session = Depends(db_session.get_db),
 ) -> OrderResponse:
     
-    #container_number = request.container_number.strip()
-    order_tracking = OrderTracking(
-        user=current_user, 
-        db_session=db,
-        container_number=request.container_number.strip()
-    )
-    return order_tracking.build_order_full_history()
+    try:
+        #container_number = request.container_number.strip()
+        order_tracking = OrderTracking(
+            user=current_user, 
+            db_session=db,
+            container_number=request.container_number.strip()
+        )
+        result = order_tracking.build_order_full_history()
+        return result
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 @router.get("/user_containers", response_model=list[OrderResponse], name="user_containers")
@@ -58,8 +64,6 @@ async def get_user_containers(
         container_query = container_query.distinct()
         container_numbers = [cn for (cn,) in container_query.all() if cn]
         
-        print(f"[get_user_containers] Found {len(container_numbers)} containers for user {current_user.username}")
-        
         if not container_numbers:
             return []
         
@@ -70,7 +74,6 @@ async def get_user_containers(
         )
         
         result = batch_tracking.build_all_orders(container_numbers)
-        print(f"[get_user_containers] Successfully returned {len(result)} containers")
         return result
         
     except Exception as e:

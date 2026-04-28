@@ -9,7 +9,7 @@ from app.data_models.db.pallet import Pallet
 
 
 class PalletException(Base):
-    __tablename__ = "warehouse_pallet_exception"
+    __tablename__ = "warehouse_palletexception"
 
     id = Column(Integer, primary_key=True, index=True)
     pallet_id = Column(Integer, ForeignKey("warehouse_pallet.id"), nullable=False)
