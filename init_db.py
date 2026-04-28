@@ -12,6 +12,7 @@ def create_tables():
     print("  - quotation_master")
     print("  - fee_detail")
     print("  - maersk_price_rate")
+    print("  - warehouse_pallet_exception")
 
 
 if __name__ == "__main__":
