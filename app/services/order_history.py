@@ -7,6 +7,7 @@ from sqlalchemy import Numeric, cast, distinct, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.data_models.db.container import Container
+from app.data_models.db.packing_list import PackingList
 from app.data_models.db.vessel import Vessel
 from app.data_models.db.order import Order
 from app.data_models.db.pallet import Pallet
@@ -23,14 +24,15 @@ from app.data_models.order_tracking import (
     ContainerShipmentStatus,
     DestinationStatusGroup,
     DateRangeSearchResponse,
-    ContainerDateResponse
+    ContainerDateResponse, ShippingMarkResponse
 )
 
 
 class OrderTracking:
     #整合了柜号查询和日期查询
     def __init__(self, user: User, db_session: Session, *, 
-                 container_number: Optional[str] = None, 
+                 container_number: Optional[str] = None,
+                 shipping_mark: Optional[str] = None,
                  start_date: Optional[datetime] = None,
                  end_date: Optional[datetime] = None
                 ) -> None:
@@ -38,11 +40,12 @@ class OrderTracking:
         self.db_session = db_session
         self.tz = pytz.timezone("Asia/Shanghai")
        
-        if container_number and (start_date or end_date):
+        if container_number and (start_date or end_date) and shipping_mark:
             raise ValueError("Cannot specify both container_number and date range")
-        if not container_number and not (start_date and end_date):
-            raise ValueError("Must specify either container_number or date range")
+        if not container_number and not shipping_mark:
+            raise ValueError("Must specify either container_number or shipping_mark")
         self.container_number = container_number
+        self.shipping_mark = shipping_mark
         self.start_date = start_date
         self.end_date = end_date
         
@@ -57,6 +60,24 @@ class OrderTracking:
         if preport is not None:
             raw_results = self._search_postport_history(self.container_number)
             postport = self._build_postport_history(raw_results) 
+        else:
+            postport = None
+        return OrderResponse(
+            preport_timenode=preport,
+            postport_timenode=postport,
+        )
+
+    def build_order_full_history_shipping_mark(self) -> OrderResponse:
+        """通过唛头查数据"""
+        #查找港前数据
+        order_data = self._search_preport_shipping_mark(self.shipping_mark)
+        #处理港前数据
+        preport = self._build_preport_history(order_data)
+
+        #查找港后数据
+        if preport is not None:
+            raw_results = self._search_postport_shipping_mark(self.shipping_mark)
+            postport = self._build_postport_history(raw_results)
         else:
             postport = None
         return OrderResponse(
@@ -84,6 +105,29 @@ class OrderTracking:
         
         if self.user.username != "superuser":
             order_data = order_data.filter(User.zem_name == self.user.zem_name)
+        return order_data.first()
+
+    def _search_preport_shipping_mark(self, shipping_mark) -> Optional[Order]:
+        order_data = (
+            self.db_session.query(Order)
+            .join(Container)
+            .join(PackingList, Container.id == PackingList.container_number_id)
+            .options(
+                joinedload(Order.user),
+                joinedload(Order.container),
+                joinedload(Order.warehouse),
+                joinedload(Order.vessel),
+                joinedload(Order.retrieval),
+                joinedload(Order.offload),
+            )
+            .filter(
+                PackingList.shipping_mark == shipping_mark,  # 👈 按唛头查询
+            )
+        )
+
+        if self.user.username != "superuser":
+            order_data = order_data.filter(User.zem_name == self.user.zem_name)
+
         return order_data.first()
 
     def _build_preport_history(self,order_data: Optional[Order]) -> Optional[OrderPreportResponse]:
@@ -258,7 +302,68 @@ class OrderTracking:
                 status_code=404,
                 detail=f"{e}: No shipment history for {self.container_number}",
             )
-    
+
+    def _search_postport_shipping_mark(self, shipping_mark) -> List[Any]:
+        try:
+            return (
+                self.db_session.query(
+                    Pallet.destination,
+                    Pallet.PO_ID,
+                    Pallet.delivery_method,
+                    Pallet.note,
+                    Pallet.delivery_type,
+                    Shipment.shipment_batch_number,
+                    Shipment.is_shipment_schduled,
+                    Shipment.shipment_schduled_at,
+                    Shipment.shipment_appointment_utc.label("shipment_appointment"),
+                    Shipment.is_shipped,
+                    Shipment.shipped_at_utc.label("shipped_at"),
+                    Shipment.is_arrived,
+                    Shipment.arrived_at_utc.label("arrived_at"),
+                    Shipment.pod_link,
+                    Shipment.pod_uploaded_at,
+                    Shipment.shipping_order_link,
+                    PalletException.exception_type,
+                    PalletException.exception_reason,
+                    func.round(cast(func.sum(Pallet.cbm), Numeric), 4).label("cbm"),
+                    func.round(
+                        cast(func.sum(Pallet.weight_lbs) / 2.20462, Numeric), 2
+                    ).label("weight_kg"),
+                    func.count(distinct(Pallet.id)).label("n_pallet"),
+                    func.sum(Pallet.pcs).label("pcs"),
+                )
+                .join(Pallet.container)
+                .outerjoin(Pallet.shipment)
+                .outerjoin(Pallet.exceptions)
+                .filter(Pallet.shipping_mark == shipping_mark)
+                .group_by(
+                    Pallet.destination,
+                    Pallet.PO_ID,
+                    Pallet.delivery_method,
+                    Pallet.note,
+                    Pallet.delivery_type,
+                    Shipment.shipment_batch_number,
+                    Shipment.is_shipment_schduled,
+                    Shipment.shipment_schduled_at,
+                    Shipment.shipment_appointment_utc,
+                    Shipment.is_shipped,
+                    Shipment.shipped_at_utc,
+                    Shipment.is_arrived,
+                    Shipment.arrived_at_utc,
+                    Shipment.pod_link,
+                    Shipment.pod_uploaded_at,
+                    Shipment.shipping_order_link,
+                    PalletException.exception_type,
+                    PalletException.exception_reason,
+                )
+                .all()
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{e}: No shipment history for {self.shipping_mark}",
+            )
+
     def _build_postport_history(self, raw_results: List[Any]) -> OrderPostportResponse:       
         data = [
             PalletShipmentSummary(

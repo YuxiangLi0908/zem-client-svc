@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.data_models.db.user import User
-from app.data_models.order_tracking import OrderResponse, OrderTrackingRequest
+from app.data_models.order_tracking import OrderResponse, OrderTrackingRequest, OrderTrackingShippingMarkRequest
 from app.services.db_session import db_session
 from app.services.order_history import OrderTracking
 from app.services.user_auth import get_current_user
@@ -32,6 +32,25 @@ async def get_order_full_history(
         traceback.print_exc()
         raise
 
+
+@router.post("/order_tracking_shipping_mark", response_model=OrderResponse, name="order_tracking_shipping_mark")
+async def get_order_full_history_shipping_mark(
+        request: OrderTrackingShippingMarkRequest,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(db_session.get_db),
+) -> OrderResponse:
+    try:
+        order_tracking = OrderTracking(
+            user=current_user,
+            db_session=db,
+            shipping_mark=request.shipping_mark.strip(),
+        )
+        result = order_tracking.build_order_full_history_shipping_mark()
+        return result
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise
 
 @router.get("/user_containers", response_model=list[OrderResponse], name="user_containers")
 async def get_user_containers(
