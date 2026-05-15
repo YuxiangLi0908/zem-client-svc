@@ -8,6 +8,9 @@ from pydantic import BaseModel, ConfigDict
 class OrderTrackingRequest(BaseModel):
     container_number: str
 
+class OrderTrackingShippingMarkRequest(BaseModel):
+    shipping_mark: str
+
 class OrderTrackingDateRequest(BaseModel):
     start_date: datetime
     end_date: datetime
@@ -99,6 +102,9 @@ class ContainerResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class ShippingMarkResponse(BaseModel):
+    shipping_mark: str
+    model_config = ConfigDict(from_attributes=True)
 
 class WarehouseResponse(BaseModel):
     name: str
@@ -193,6 +199,7 @@ class OrderResponse(BaseModel):
 class ContainerBasicInfo(BaseModel):
     """柜子基础信息（Preport数据）"""
     container_number: str
+    shipping_mark: str
     vessel_eta: Optional[datetime]
     origin_port: Optional[str]
     destination_port: Optional[str]
