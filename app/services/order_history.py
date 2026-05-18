@@ -262,6 +262,7 @@ class OrderTracking:
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
                     Shipment.shipping_order_link,
+                    Shipment.appointment_id,
                     PalletException.exception_type,
                     PalletException.exception_reason,
                     func.round(cast(func.sum(Pallet.cbm), Numeric), 4).label("cbm"),
@@ -292,6 +293,7 @@ class OrderTracking:
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
                     Shipment.shipping_order_link,
+                    Shipment.appointment_id,
                     PalletException.exception_type,
                     PalletException.exception_reason,
                 )
@@ -383,12 +385,13 @@ class OrderTracking:
                 pod_link=row[13],
                 pod_uploaded_at=row[14],
                 shipping_order_link=row[15],
-                exception_type=row[16],
-                exception_reason=row[17],
-                cbm=row[18],
-                weight_kg=row[19],
-                n_pallet=row[20],
-                pcs=row[21],
+                appointment_id=row[16],
+                exception_type=row[17],
+                exception_reason=row[18],
+                cbm=row[19],
+                weight_kg=row[20],
+                n_pallet=row[21],
+                pcs=row[22],
             )
             for row in raw_results
         ]
@@ -672,12 +675,13 @@ class BatchOrderTracking:
                 pod_link=row[13],
                 pod_uploaded_at=row[14],
                 shipping_order_link=row[15],
-                exception_type=row[16],
-                exception_reason=row[17],
-                cbm=row[18],
-                weight_kg=row[19],
-                n_pallet=row[20],
-                pcs=row[21],
+                appointment_id=row[16],
+                exception_type=row[17],
+                exception_reason=row[18],
+                cbm=row[19],
+                weight_kg=row[20],
+                n_pallet=row[21],
+                pcs=row[22],
             )
             for row in rows
         ]
