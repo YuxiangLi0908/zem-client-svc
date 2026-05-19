@@ -483,6 +483,7 @@ class BatchOrderTracking:
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
                     Shipment.shipping_order_link,
+                    Shipment.appointment_id,
                     PalletException.exception_type,
                     PalletException.exception_reason,
                     func.round(cast(func.sum(Pallet.cbm), Numeric), 4).label("cbm"),
@@ -515,6 +516,7 @@ class BatchOrderTracking:
                     Shipment.pod_link,
                     Shipment.pod_uploaded_at,
                     Shipment.shipping_order_link,
+                    Shipment.appointment_id,
                     PalletException.exception_type,
                     PalletException.exception_reason,
                 )
