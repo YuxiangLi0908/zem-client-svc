@@ -54,6 +54,7 @@ class PalletShipmentSummary(BaseModel):
     pod_uploaded_at: Optional[datetime] = None
     shipping_order_link: Optional[str] = None
     appointment_id: Optional[str] = None
+    shipment_type: Optional[str] = None
     cbm: Optional[float] = None
     weight_kg: Optional[float] = None
     n_pallet: Optional[float] = None
