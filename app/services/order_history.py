@@ -263,6 +263,7 @@ class OrderTracking:
                     Shipment.pod_uploaded_at,
                     Shipment.shipping_order_link,
                     Shipment.appointment_id,
+                    Shipment.shipment_type,
                     PalletException.exception_type,
                     PalletException.exception_reason,
                     func.round(cast(func.sum(Pallet.cbm), Numeric), 4).label("cbm"),
@@ -294,6 +295,7 @@ class OrderTracking:
                     Shipment.pod_uploaded_at,
                     Shipment.shipping_order_link,
                     Shipment.appointment_id,
+                    Shipment.shipment_type,
                     PalletException.exception_type,
                     PalletException.exception_reason,
                 )
@@ -386,12 +388,13 @@ class OrderTracking:
                 pod_uploaded_at=row[14],
                 shipping_order_link=row[15],
                 appointment_id=row[16],
-                exception_type=row[17],
-                exception_reason=row[18],
-                cbm=row[19],
-                weight_kg=row[20],
-                n_pallet=row[21],
-                pcs=row[22],
+                shipment_type=row[17],
+                exception_type=row[18],
+                exception_reason=row[19],
+                cbm=row[20],
+                weight_kg=row[21],
+                n_pallet=row[22],
+                pcs=row[23],
             )
             for row in raw_results
         ]
@@ -484,6 +487,7 @@ class BatchOrderTracking:
                     Shipment.pod_uploaded_at,
                     Shipment.shipping_order_link,
                     Shipment.appointment_id,
+                    Shipment.shipment_type,
                     PalletException.exception_type,
                     PalletException.exception_reason,
                     func.round(cast(func.sum(Pallet.cbm), Numeric), 4).label("cbm"),
@@ -517,6 +521,7 @@ class BatchOrderTracking:
                     Shipment.pod_uploaded_at,
                     Shipment.shipping_order_link,
                     Shipment.appointment_id,
+                    Shipment.shipment_type,
                     PalletException.exception_type,
                     PalletException.exception_reason,
                 )
@@ -678,12 +683,13 @@ class BatchOrderTracking:
                 pod_uploaded_at=row[14],
                 shipping_order_link=row[15],
                 appointment_id=row[16],
-                exception_type=row[17],
-                exception_reason=row[18],
-                cbm=row[19],
-                weight_kg=row[20],
-                n_pallet=row[21],
-                pcs=row[22],
+                shipment_type=row[17],
+                exception_type=row[18],
+                exception_reason=row[19],
+                cbm=row[20],
+                weight_kg=row[21],
+                n_pallet=row[22],
+                pcs=row[23],
             )
             for row in rows
         ]
