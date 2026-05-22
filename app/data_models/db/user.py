@@ -3,11 +3,7 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from app.data_models.db.base import Base
 
 
-class Customer(Base):
-    """
-    客户用户表
-    对应 Django 模型中的 warehouse_customer 表
-    """
+class User(Base):
     __tablename__ = "warehouse_customer"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -21,6 +17,10 @@ class Customer(Base):
     address = Column(String)
     username = Column(String, unique=True)
     password = Column(String)
+
+
+# Customer 是 User 的别名，用于小程序登录接口
+Customer = User
 
 
 class AuthUser(Base):
@@ -41,7 +41,3 @@ class AuthUser(Base):
     is_staff = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     date_joined = Column(DateTime, nullable=False)
-
-
-# 为了保持兼容性，保留 User 别名指向 Customer
-User = Customer

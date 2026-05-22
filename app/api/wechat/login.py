@@ -3,14 +3,10 @@
 
 【关键业务规则】
 1. 登录验证顺序：
-   - 优先查询 Customer 表（客户用户）
-   - 若 Customer 表无该用户，查询 AuthUser 表（员工用户）
+   - 第一步：查询 User 表（warehouse_customer，客户用户），用 Django 密码算法
+   - 第二步：如果第一步没找到，用 zem-client-svc 原有的登录逻辑再查一次 User 表
 
-2. 密码验证：
-   - 使用 Django 的 PBKDF2-SHA256 算法验证密码
-   - 与原 zem-wechat-mini-program 保持一致
-
-3. Token 生成：
+2. Token 生成：
    - 生成 JWT token，包含用户名、显示名称、用户类型
    - 用户类型用于后续权限判断
 """
@@ -23,10 +19,11 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from fastapi.concurrency import run_in_threadpool
 
-from app.data_models.db.user import Customer, AuthUser
+from app.data_models.db.user import User, AuthUser
 from app.data_models.login import LoginRequest, UserAuth
 from app.services.config import app_config
 from app.services.db_session import db_session
+from app.services.user_auth import authenticate_user
 
 # 配置日志
 logging.basicConfig(level=logging.DEBUG)
@@ -74,7 +71,8 @@ async def login(
 ) -> UserAuth:
     """
     微信小程序用户登录接口
-    优先查询 Customer 表（客户），再查询 AuthUser 表（员工）
+    第一步：查 User 表（Django 密码算法）
+    第二步：如果没找到，用 zem-client-svc 原有的登录逻辑再查一次
     """
     # 1. 基础参数校验
     if not request.username or not request.password:
@@ -85,43 +83,68 @@ async def login(
     username = request.username.strip()
     password = request.password
 
-    # 2. 优先查询 Customer 表
+    # 2. 第一步：查询 User 表（客户用户），用 Django 密码算法
     try:
-        customer = await run_in_threadpool(_query_user_sync, db, Customer, "username", username)
+        user = await run_in_threadpool(_query_user_sync, db, User, "username", username)
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"Customer query error: {str(e)}")
+        logger.error(f"User query error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database temporarily unavailable",
         )
 
-    if customer:
+    if user:
         # 验证客户密码
-        if not _verify_password(password, customer.password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials / 密码错误",
+        if _verify_password(password, user.password):
+            # 生成 Token
+            display_name = user.full_name or user.zem_name
+            token = jwt.encode(
+                {
+                    "user_name": user.username or user.zem_name,
+                    "display_name": display_name,
+                    "user_type": "customer",
+                },
+                app_config.SECRET_KEY,
+                algorithm=app_config.JWT_ALGO,
             )
-        # 生成 Token
-        display_name = customer.full_name or customer.zem_name
-        token = jwt.encode(
-            {
-                "user_name": customer.username or customer.zem_name,
-                "display_name": display_name,
-                "user_type": "customer",
-            },
-            app_config.SECRET_KEY,
-            algorithm=app_config.JWT_ALGO,
-        )
-        return UserAuth(
-            user=display_name,
-            access_token=token,
-            user_type="customer",
-        )
+            return UserAuth(
+                user=display_name,
+                access_token=token,
+                user_type="customer",
+            )
 
-    # 3. 查询 AuthUser 表（员工用户）
+    # 3. 第二步：用 zem-client-svc 原有的登录逻辑再查一次 User 表
+    try:
+        # 调用 zem-client-svc 原有的认证函数
+        user = await run_in_threadpool(authenticate_user, db, request)
+    except HTTPException as e:
+        # 如果原有的认证也失败了，继续下一步
+        pass
+    except Exception as e:
+        logger.error(f"Zem client auth error: {str(e)}")
+        # 继续下一步
+    else:
+        if user:
+            # zem-client-svc 原有的认证成功
+            display_name = user.full_name or user.zem_name
+            token = jwt.encode(
+                {
+                    "user_name": user.username or user.zem_name,
+                    "display_name": display_name,
+                    "user_type": "customer",
+                },
+                app_config.SECRET_KEY,
+                algorithm=app_config.JWT_ALGO,
+            )
+            return UserAuth(
+                user=display_name,
+                access_token=token,
+                user_type="customer",
+            )
+
+    # 4. 查询 AuthUser 表（员工用户）
     try:
         staff = await run_in_threadpool(_query_user_sync, db, AuthUser, "username", username)
     except HTTPException as e:
@@ -141,29 +164,25 @@ async def login(
                 detail="Account is disabled / 账户已禁用",
             )
         # 验证密码
-        if not _verify_password(password, staff.password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials / 密码错误",
+        if _verify_password(password, staff.password):
+            # 生成员工 Token
+            display_name = f"{staff.first_name} {staff.last_name}".strip() or staff.username
+            token = jwt.encode(
+                {
+                    "user_name": staff.username,
+                    "display_name": display_name,
+                    "user_type": "staff",
+                },
+                app_config.SECRET_KEY,
+                algorithm=app_config.JWT_ALGO,
             )
-        # 生成员工 Token
-        display_name = f"{staff.first_name} {staff.last_name}".strip() or staff.username
-        token = jwt.encode(
-            {
-                "user_name": staff.username,
-                "display_name": display_name,
-                "user_type": "staff",
-            },
-            app_config.SECRET_KEY,
-            algorithm=app_config.JWT_ALGO,
-        )
-        return UserAuth(
-            user=display_name,
-            access_token=token,
-            user_type="staff",
-        )
+            return UserAuth(
+                user=display_name,
+                access_token=token,
+                user_type="staff",
+            )
 
-    # 4. 两个表都无该用户
+    # 5. 都无该用户
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="User not found / 用户不存在",
