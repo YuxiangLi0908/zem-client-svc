@@ -9,3 +9,4 @@ class LoginRequest(BaseModel):
 class UserAuth(BaseModel):
     user: str
     access_token: str
+    user_type: str = "customer"  # customer 或 staff
