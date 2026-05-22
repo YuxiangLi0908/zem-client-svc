@@ -19,7 +19,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from fastapi.concurrency import run_in_threadpool
 
-from app.data_models.db.user import User, AuthUser
+from app.data_models.db.user import User
 from app.data_models.login import LoginRequest, UserAuth
 from app.services.config import app_config
 from app.services.db_session import db_session
@@ -144,45 +144,7 @@ async def login(
                 user_type="customer",
             )
 
-    # 4. 查询 AuthUser 表（员工用户）
-    try:
-        staff = await run_in_threadpool(_query_user_sync, db, AuthUser, "username", username)
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        logger.error(f"AuthUser query error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database temporarily unavailable",
-        )
-
-    if staff:
-        # 检查员工账户是否激活
-        if not getattr(staff, "is_active", True):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Account is disabled / 账户已禁用",
-            )
-        # 验证密码
-        if _verify_password(password, staff.password):
-            # 生成员工 Token
-            display_name = f"{staff.first_name} {staff.last_name}".strip() or staff.username
-            token = jwt.encode(
-                {
-                    "user_name": staff.username,
-                    "display_name": display_name,
-                    "user_type": "staff",
-                },
-                app_config.SECRET_KEY,
-                algorithm=app_config.JWT_ALGO,
-            )
-            return UserAuth(
-                user=display_name,
-                access_token=token,
-                user_type="staff",
-            )
-
-    # 5. 都无该用户
+    # 4. 都无该用户
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="User not found / 用户不存在",
