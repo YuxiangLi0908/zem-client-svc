@@ -56,7 +56,6 @@ class Order(Base):
     invoice_reject_reason = Column(String(255), nullable=True)
 
     # Relationships
-    user = relationship("User", backref="order")
     container = relationship("Container", backref="order")
     warehouse = relationship("Warehouse", backref="order")
     vessel = relationship("Vessel", backref="order")
