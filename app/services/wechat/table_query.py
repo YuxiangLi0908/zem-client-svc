@@ -11,7 +11,7 @@
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect
-from app.data_models.db.user import User
+from app.data_models.db.user import Customer
 from app.data_models.wechat.order_tracking import TableQueryResponse
 
 
@@ -23,13 +23,13 @@ class TableQuery:
     # 白名单用户
     AUTHORIZED_USERS = {"sangwei", "yuxiang.li", "qyj"}
 
-    def __init__(self, user: User, db_session: Session) -> None:
+    def __init__(self, user: Customer | AuthUser, db_session: Session) -> None:
         self.user = user
         self.db_session = db_session
 
     def _is_authorized(self) -> bool:
         """检查用户是否有权限"""
-        return self.user.username in self.AUTHORIZED_USERS
+        return isinstance(self.user, AuthUser)
 
     def _get_available_tables(self) -> List[Dict]:
         """获取可用的表列表"""
@@ -52,7 +52,7 @@ class TableQuery:
             "Offload": offload.Offload,
             "Vessel": vessel.Vessel,
             "Warehouse": warehouse.Warehouse,
-            "User": user.User,
+            "Customer": user.Customer,
             "PalletException": pallet_exception.PalletException,
             "FeeDetail": fee_detail.FeeDetail,
             "QuotationMaster": quotation_master.QuotationMaster,
@@ -87,7 +87,7 @@ class TableQuery:
             "Offload": offload.Offload,
             "Vessel": vessel.Vessel,
             "Warehouse": warehouse.Warehouse,
-            "User": user.User,
+            "Customer": user.Customer,
             "PalletException": pallet_exception.PalletException,
             "FeeDetail": fee_detail.FeeDetail,
             "QuotationMaster": quotation_master.QuotationMaster,

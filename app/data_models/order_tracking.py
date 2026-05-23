@@ -183,7 +183,7 @@ class OrderPreportResponse(BaseModel):
     add_to_t49: Optional[bool]
     cancel_notification: Optional[bool]
     cancel_time: Optional[date]
-    user: Optional[UserResponse]
+    customer: Optional[UserResponse]
     container: Optional[ContainerResponse]
     warehouse: Optional[WarehouseResponse]
     vessel: Optional[VesselResponse]

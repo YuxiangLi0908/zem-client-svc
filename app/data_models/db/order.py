@@ -18,6 +18,7 @@ from app.data_models.db.offload import Offload
 from app.data_models.db.retrieval import Retrieval
 from app.data_models.db.vessel import Vessel
 from app.data_models.db.warehouse import Warehouse
+from app.data_models.db.user import Customer
 
 
 class Order(Base):
@@ -56,6 +57,7 @@ class Order(Base):
     invoice_reject_reason = Column(String(255), nullable=True)
 
     # Relationships
+    customer = relationship("Customer", backref="order")
     container = relationship("Container", backref="order")
     warehouse = relationship("Warehouse", backref="order")
     vessel = relationship("Vessel", backref="order")

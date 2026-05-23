@@ -10,7 +10,7 @@ import aiohttp
 
 from app.services.db_session import db_session
 from app.services.user_auth import get_current_user
-from app.data_models.db.user import User
+from app.data_models.db.user import Customer, AuthUser
 from app.data_models.db.quotation_master import QuotationMaster
 from app.data_models.db.fee_detail import FeeDetail
 from app.data_models.db.maersk_price_rate import MaerskPriceRate
@@ -66,7 +66,7 @@ class MaerskQuotationResponse(BaseModel):
 @router.post("/query_quotation", response_model=QuotationResponse)
 async def query_quotation(
     request: QuotationRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: Customer | AuthUser = Depends(get_current_user),
     db: Session = Depends(db_session.get_db),
 ) -> QuotationResponse:
     """
@@ -525,7 +525,7 @@ def _calculate_total_pallet(raw_p: float, is_niche_warehouse: bool, warehouse: s
     return total_pallet
 
 
-def get_maersk_increase_percentage(db: Session, current_user: User) -> float:
+def get_maersk_increase_percentage(db: Session, current_user: Customer | AuthUser) -> float:
     """
     获取当前用户适用的Maersk涨价百分比
     """
@@ -559,7 +559,7 @@ def get_maersk_increase_percentage(db: Session, current_user: User) -> float:
 @router.post("/maersk_quotation", response_model=MaerskQuotationResponse)
 async def maersk_quotation(
     request: MaerskQuotationRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: Customer | AuthUser = Depends(get_current_user),
     db: Session = Depends(db_session.get_db),
 ) -> MaerskQuotationResponse:
     """
