@@ -36,6 +36,9 @@ def get_current_user(
         auth_user = db.query(AuthUser).filter(AuthUser.username == username).first()
         if auth_user:
             return auth_user
+        customer = db.query(Customer).filter(Customer.username == username).first()
+        if customer:
+            return customer
         raise credentials_exception
 
     if user_type == "customer":

@@ -524,7 +524,7 @@ class OrderTracking:
                         PackingList.pcs.label("pcs"),
                     )
                     .join(PackingList.container)
-                    .outerjoin(PackingList.master_shipment_batch_number)
+                    .outerjoin(PackingList.shipment)
                     .filter(Container.container_number == self.container_number)
                 )
 
