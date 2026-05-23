@@ -30,7 +30,7 @@ from app.data_models.db.packing_list import PackingList
 from app.data_models.db.shipment import Shipment
 from app.data_models.db.offload import Offload
 from app.data_models.db.retrieval import Retrieval
-from app.data_models.db.user import User
+from app.data_models.db.user import Customer, AuthUser
 from app.data_models.wechat.order_tracking import (
     OrderPostportResponse,
     OrderPreportResponse,
@@ -61,7 +61,7 @@ class OrderTracking:
 
     def __init__(
         self,
-        user: User,
+        user: Customer | AuthUser,
         query: str,
         db_session: Session,
     ) -> None:
@@ -202,7 +202,7 @@ class OrderTracking:
             self.db_session.query(Order)
             .join(Order.container)
             .options(
-                joinedload(Order.user),
+                joinedload(Order.customer),
                 joinedload(Order.container),
                 joinedload(Order.warehouse),
                 joinedload(Order.vessel),
@@ -216,13 +216,14 @@ class OrderTracking:
         if not order_data:
             return None, True, None
 
-        # 修复：空值判断（order_data.user可能为None）
-        order_owner_zem_name = order_data.user.zem_name if (order_data.user and hasattr(order_data.user, 'zem_name')) else None
+        # 修复：空值判断（order_data.customer可能为None）
+        order_owner_zem_name = order_data.customer.zem_name if (order_data.customer and hasattr(order_data.customer, 'zem_name')) else None
 
-        # 权限验证：检查是否是员工或者是自己的订单
+        is_staff = isinstance(self.user, AuthUser)
+
         is_authorized = (
-            self.user.username in ["sangwei", "yuxiang.li", "qyj"]  # 员工白名单
-            or (order_owner_zem_name and self.user.zem_name == order_owner_zem_name)
+            is_staff
+            or (order_owner_zem_name and hasattr(self.user, 'zem_name') and self.user.zem_name == order_owner_zem_name)
         )
 
         if not is_authorized:

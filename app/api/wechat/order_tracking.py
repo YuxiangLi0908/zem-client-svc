@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.services.wechat.order_history import OrderTracking
 from app.services.user_auth import get_current_user
 from app.services.db_session import db_session
-from app.data_models.db.user import User
+from app.data_models.db.user import Customer, AuthUser
 from app.data_models.wechat.order_tracking import OrderResponse, OrderTrackingRequest
 
 router = APIRouter()
@@ -17,7 +17,7 @@ router = APIRouter()
 @router.post("/order_tracking", response_model=OrderResponse, name="wechat_order_tracking")
 async def get_order_full_history(
     request: OrderTrackingRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: Customer | AuthUser = Depends(get_current_user),
     db: Session = Depends(db_session.get_db),
 ) -> OrderResponse:
     """

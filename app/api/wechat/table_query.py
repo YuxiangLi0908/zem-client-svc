@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.services.wechat.table_query import TableQuery
 from app.services.user_auth import get_current_user
 from app.services.db_session import db_session
-from app.data_models.db.user import User
+from app.data_models.db.user import Customer, AuthUser
 from app.data_models.wechat.order_tracking import TableQueryResponse, TableQueryRequest
 
 router = APIRouter()
@@ -16,7 +16,7 @@ router = APIRouter()
 
 @router.get("/table_query/init", response_model=TableQueryResponse, name="wechat_table_query_init")
 async def get_table_query_init(
-    current_user: User = Depends(get_current_user),
+    current_user: Customer | AuthUser = Depends(get_current_user),
     db: Session = Depends(db_session.get_db),
 ) -> TableQueryResponse:
     """
@@ -29,7 +29,7 @@ async def get_table_query_init(
 @router.post("/table_query", response_model=TableQueryResponse, name="wechat_table_query")
 async def execute_table_query(
     request: TableQueryRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: Customer | AuthUser = Depends(get_current_user),
     db: Session = Depends(db_session.get_db),
 ) -> TableQueryResponse:
     """

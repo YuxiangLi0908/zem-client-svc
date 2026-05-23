@@ -13,7 +13,7 @@ from app.data_models.db.order import Order
 from app.data_models.db.pallet import Pallet
 from app.data_models.db.shipment import Shipment
 from app.data_models.db.pallet_exception import PalletException
-from app.data_models.db.user import User
+from app.data_models.db.user import Customer, AuthUser
 from app.data_models.order_tracking import (
     OrderPostportResponse,
     OrderPreportResponse,
@@ -30,13 +30,13 @@ from app.data_models.order_tracking import (
 
 class OrderTracking:
     #整合了柜号查询和日期查询
-    def __init__(self, user: User, db_session: Session, *, 
+    def __init__(self, user: Customer | AuthUser, db_session: Session, *, 
                  container_number: Optional[str] = None,
                  shipping_mark: Optional[str] = None,
                  start_date: Optional[datetime] = None,
                  end_date: Optional[datetime] = None
                 ) -> None:
-        self.user: User = user
+        self.user: Customer | AuthUser = user
         self.db_session = db_session
         self.tz = pytz.timezone("Asia/Shanghai")
        
@@ -89,9 +89,9 @@ class OrderTracking:
         order_data = (
             self.db_session.query(Order)
             .join(Order.container)
-            .join(Order.user)
+            .join(Order.customer)
             .options(
-                joinedload(Order.user),
+                joinedload(Order.customer),
                 joinedload(Order.container),
                 joinedload(Order.warehouse),
                 joinedload(Order.vessel),
@@ -103,8 +103,9 @@ class OrderTracking:
             )
         )
         
-        if self.user.username != "superuser":
-            order_data = order_data.filter(User.zem_name == self.user.zem_name)
+        is_staff = isinstance(self.user, AuthUser)
+        if not is_staff and hasattr(self.user, 'zem_name'):
+            order_data = order_data.filter(Customer.zem_name == self.user.zem_name)
         return order_data.first()
 
     def _search_preport_shipping_mark(self, shipping_mark) -> Optional[Order]:
@@ -113,7 +114,7 @@ class OrderTracking:
             .join(Container)
             .join(PackingList, Container.id == PackingList.container_number_id)
             .options(
-                joinedload(Order.user),
+                joinedload(Order.customer),
                 joinedload(Order.container),
                 joinedload(Order.warehouse),
                 joinedload(Order.vessel),
@@ -121,12 +122,13 @@ class OrderTracking:
                 joinedload(Order.offload),
             )
             .filter(
-                PackingList.shipping_mark == shipping_mark,  # 👈 按唛头查询
+                PackingList.shipping_mark == shipping_mark,
             )
         )
 
-        if self.user.username != "superuser":
-            order_data = order_data.filter(User.zem_name == self.user.zem_name)
+        is_staff = isinstance(self.user, AuthUser)
+        if not is_staff and hasattr(self.user, 'zem_name'):
+            order_data = order_data.filter(Customer.zem_name == self.user.zem_name)
 
         return order_data.first()
 
@@ -413,8 +415,8 @@ class OrderTracking:
 
 
 class BatchOrderTracking:
-    def __init__(self, user: User, db_session: Session) -> None:
-        self.user: User = user
+    def __init__(self, user: Customer | AuthUser, db_session: Session) -> None:
+        self.user: Customer | AuthUser = user
         self.db_session = db_session
         self.tz = pytz.timezone("Asia/Shanghai")
     
@@ -426,15 +428,15 @@ class BatchOrderTracking:
             six_months_ago = datetime.utcnow() - timedelta(days=180)
             
             print(f"BatchOrderTracking.build_all_orders called with {len(container_numbers)} containers")
-            print(f"Current user: username={self.user.username}, zem_name={self.user.zem_name}, zem_code={getattr(self.user, 'zem_code', 'N/A')}")
+            print(f"Current user: username={self.user.username}, zem_name={getattr(self.user, 'zem_name', 'N/A')}, zem_code={getattr(self.user, 'zem_code', 'N/A')}")
             
             # 批量查询preport数据
             order_query = (
                 self.db_session.query(Order)
                 .join(Order.container)
-                .join(Order.user)
+                .join(Order.customer)
                 .options(
-                    joinedload(Order.user),
+                    joinedload(Order.customer),
                     joinedload(Order.container),
                     joinedload(Order.warehouse),
                     joinedload(Order.vessel),
@@ -447,8 +449,9 @@ class BatchOrderTracking:
                 )
             )
             
-            if self.user.username != "superuser":
-                order_query = order_query.filter(User.zem_name == self.user.zem_name)
+            is_staff = isinstance(self.user, AuthUser)
+            if not is_staff and hasattr(self.user, 'zem_name'):
+                order_query = order_query.filter(Customer.zem_name == self.user.zem_name)
             
             orders = order_query.all()
             print(f"Found {len(orders)} orders from database")
@@ -461,8 +464,8 @@ class BatchOrderTracking:
             for order in orders:
                 if order.container:
                     found_container_numbers.append(order.container.container_number)
-                    if order.user:
-                        print(f"Order {order.id}: container={order.container.container_number}, user.zem_code={order.user.zem_code}")
+                    if order.customer:
+                        print(f"Order {order.id}: container={order.container.container_number}, customer.zem_code={order.customer.zem_code}")
             
             print(f"Found {len(found_container_numbers)} container numbers")
             
@@ -571,7 +574,7 @@ class BatchOrderTracking:
             order_data = OrderPreportResponse.model_validate(order).model_dump()
         except Exception as e:
             container_num = order.container.container_number if order.container else 'N/A'
-            user_info = f"user.zem_code={order.user.zem_code if order.user else 'N/A'}" if order.user else "user=None"
+            user_info = f"customer.zem_code={order.customer.zem_code if order.customer else 'N/A'}" if order.customer else "customer=None"
             raise Exception(f"Validation error for Order {order.id}, container={container_num}, {user_info}: {str(e)}")
         
         preport_history = []
