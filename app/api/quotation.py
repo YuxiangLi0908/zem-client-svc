@@ -577,7 +577,6 @@ async def maersk_quotation(
                 success=False,
                 message=f'无效的仓库代码: {request.warehouse}'
             )
-        
         dest_zip = request.dest_zip.strip()
         ship_date = request.ship_date
         need_liftgate = 'true' if str(request.need_liftgate).strip() in ('是', 'true', 'True', '1') else 'false'
