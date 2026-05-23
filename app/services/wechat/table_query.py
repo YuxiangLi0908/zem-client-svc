@@ -11,7 +11,7 @@
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect
-from app.data_models.db.user import Customer
+from app.data_models.db.user import Customer, AuthUser
 from app.data_models.wechat.order_tracking import TableQueryResponse
 
 
