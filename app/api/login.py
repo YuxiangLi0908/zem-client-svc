@@ -23,12 +23,14 @@ async def login(request: LoginRequest, db: Session = Depends(db_session.get_db))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
+    user_type = "staff" if db_user.username == "superuser" else "customer"
     token = jwt.encode(
         {
             "user_name": db_user.username,
             "zem_name": db_user.zem_name,
+            "user_type": user_type,
         },
         app_config.SECRET_KEY,
         algorithm=app_config.JWT_ALGO,
     )
-    return {"user": db_user.zem_name, "access_token": token}
+    return {"user": db_user.zem_name, "access_token": token, "user_type": user_type}

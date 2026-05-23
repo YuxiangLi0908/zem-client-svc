@@ -13,7 +13,7 @@ from app.data_models.db.order import Order
 from app.data_models.db.pallet import Pallet
 from app.data_models.db.shipment import Shipment
 from app.data_models.db.pallet_exception import PalletException
-from app.data_models.db.user import Customer, AuthUser
+from app.data_models.db.user import Customer
 from app.data_models.order_tracking import (
     OrderPostportResponse,
     OrderPreportResponse,
@@ -30,13 +30,13 @@ from app.data_models.order_tracking import (
 
 class OrderTracking:
     #整合了柜号查询和日期查询
-    def __init__(self, user: Customer | AuthUser, db_session: Session, *, 
+    def __init__(self, user: Customer, db_session: Session, *, 
                  container_number: Optional[str] = None,
                  shipping_mark: Optional[str] = None,
                  start_date: Optional[datetime] = None,
                  end_date: Optional[datetime] = None
                 ) -> None:
-        self.user: Customer | AuthUser = user
+        self.user: Customer = user
         self.db_session = db_session
         self.tz = pytz.timezone("Asia/Shanghai")
        
@@ -89,7 +89,7 @@ class OrderTracking:
         order_data = (
             self.db_session.query(Order)
             .join(Order.container)
-            .join(Order.customer)
+            .outerjoin(Order.customer)
             .options(
                 joinedload(Order.customer),
                 joinedload(Order.container),
@@ -103,7 +103,7 @@ class OrderTracking:
             )
         )
         
-        is_staff = isinstance(self.user, AuthUser)
+        is_staff = self.user.username == 'superuser'
         if not is_staff and hasattr(self.user, 'zem_name'):
             order_data = order_data.filter(Customer.zem_name == self.user.zem_name)
         return order_data.first()
@@ -126,7 +126,7 @@ class OrderTracking:
             )
         )
 
-        is_staff = isinstance(self.user, AuthUser)
+        is_staff = self.user.username == 'superuser'
         if not is_staff and hasattr(self.user, 'zem_name'):
             order_data = order_data.filter(Customer.zem_name == self.user.zem_name)
 
@@ -415,8 +415,8 @@ class OrderTracking:
 
 
 class BatchOrderTracking:
-    def __init__(self, user: Customer | AuthUser, db_session: Session) -> None:
-        self.user: Customer | AuthUser = user
+    def __init__(self, user: Customer, db_session: Session) -> None:
+        self.user: Customer = user
         self.db_session = db_session
         self.tz = pytz.timezone("Asia/Shanghai")
     
@@ -449,7 +449,7 @@ class BatchOrderTracking:
                 )
             )
             
-            is_staff = isinstance(self.user, AuthUser)
+            is_staff = self.user.username == 'superuser'
             if not is_staff and hasattr(self.user, 'zem_name'):
                 order_query = order_query.filter(Customer.zem_name == self.user.zem_name)
             

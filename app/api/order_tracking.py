@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.data_models.db.user import Customer, AuthUser
+from app.data_models.db.user import Customer
 from app.data_models.order_tracking import OrderResponse, OrderTrackingRequest, OrderTrackingShippingMarkRequest
 from app.services.db_session import db_session
 from app.services.order_history import OrderTracking
@@ -14,7 +14,7 @@ router = APIRouter()
 @router.post("/order_tracking", response_model=OrderResponse, name="order_tracking")
 async def get_order_full_history(
     request: OrderTrackingRequest,
-    current_user: Customer | AuthUser = Depends(get_current_user),
+    current_user: Customer = Depends(get_current_user),
     db: Session = Depends(db_session.get_db),
 ) -> OrderResponse:
     
@@ -35,7 +35,7 @@ async def get_order_full_history(
 @router.post("/order_tracking_shipping_mark", response_model=OrderResponse, name="order_tracking_shipping_mark")
 async def get_order_full_history_shipping_mark(
         request: OrderTrackingShippingMarkRequest,
-        current_user: Customer | AuthUser = Depends(get_current_user),
+        current_user: Customer = Depends(get_current_user),
         db: Session = Depends(db_session.get_db),
 ) -> OrderResponse:
     try:
@@ -53,7 +53,7 @@ async def get_order_full_history_shipping_mark(
 
 @router.get("/user_containers", response_model=list[OrderResponse], name="user_containers")
 async def get_user_containers(
-    current_user: Customer | AuthUser = Depends(get_current_user),
+    current_user: Customer = Depends(get_current_user),
     db: Session = Depends(db_session.get_db),
 ) -> list[OrderResponse]:
     import traceback
@@ -64,7 +64,7 @@ async def get_user_containers(
     try:
         six_months_ago = datetime.utcnow() - timedelta(days=180)
         
-        is_staff = isinstance(current_user, AuthUser)
+        is_staff = current_user.username == 'superuser'
         
         print(f"[get_user_containers] User: username={current_user.username}, is_staff={is_staff}, zem_name={getattr(current_user, 'zem_name', 'N/A')}")
         
