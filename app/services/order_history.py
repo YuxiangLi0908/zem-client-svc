@@ -51,15 +51,25 @@ class OrderTracking:
         
 
     def build_order_full_history(self) -> OrderResponse:
-        #查找港前数据
         order_data = self._search_preport_history(self.container_number)
-        #处理港前数据
         preport = self._build_preport_history(order_data)
         
-        #查找港后数据
         if preport is not None:
-            raw_results = self._search_postport_history(self.container_number)
-            postport = self._build_postport_history(raw_results) 
+            pallet_results = self._search_postport_history(self.container_number)
+            pallet_delivery_types = set()
+            for row in pallet_results:
+                if row[4]:
+                    pallet_delivery_types.add(row[4])
+            missing_delivery_types = set()
+            for dt in ["public", "other"]:
+                if dt not in pallet_delivery_types:
+                    missing_delivery_types.add(dt)
+            packing_list_results = []
+            if missing_delivery_types:
+                packing_list_results = self._search_postport_packing_list(
+                    self.container_number, missing_delivery_types
+                )
+            postport = self._build_postport_history(pallet_results, packing_list_results)
         else:
             postport = None
         return OrderResponse(
@@ -68,16 +78,25 @@ class OrderTracking:
         )
 
     def build_order_full_history_shipping_mark(self) -> OrderResponse:
-        """通过唛头查数据"""
-        #查找港前数据
         order_data = self._search_preport_shipping_mark(self.shipping_mark)
-        #处理港前数据
         preport = self._build_preport_history(order_data)
 
-        #查找港后数据
         if preport is not None:
-            raw_results = self._search_postport_shipping_mark(self.shipping_mark)
-            postport = self._build_postport_history(raw_results)
+            pallet_results = self._search_postport_shipping_mark(self.shipping_mark)
+            pallet_delivery_types = set()
+            for row in pallet_results:
+                if row[4]:
+                    pallet_delivery_types.add(row[4])
+            missing_delivery_types = set()
+            for dt in ["public", "other"]:
+                if dt not in pallet_delivery_types:
+                    missing_delivery_types.add(dt)
+            packing_list_results = []
+            if missing_delivery_types:
+                packing_list_results = self._search_postport_packing_list_shipping_mark(
+                    self.shipping_mark, missing_delivery_types
+                )
+            postport = self._build_postport_history(pallet_results, packing_list_results)
         else:
             postport = None
         return OrderResponse(
@@ -370,36 +389,193 @@ class OrderTracking:
                 detail=f"{e}: No shipment history for {self.shipping_mark}",
             )
 
-    def _build_postport_history(self, raw_results: List[Any]) -> OrderPostportResponse:       
-        data = [
-            PalletShipmentSummary(
-                destination=row[0],
-                PO_ID=row[1],
-                delivery_method=row[2],
-                note=row[3],
-                delivery_type=row[4],
-                master_shipment_batch_number=row[5],
-                is_shipment_schduled=row[6],
-                shipment_schduled_at=row[7],
-                shipment_appointment=row[8],
-                is_shipped=row[9],
-                shipped_at=row[10],
-                is_arrived=row[11],
-                arrived_at=row[12],
-                pod_link=row[13],
-                pod_uploaded_at=row[14],
-                shipping_order_link=row[15],
-                appointment_id=row[16],
-                shipment_type=row[17],
-                exception_type=row[18],
-                exception_reason=row[19],
-                cbm=row[20],
-                weight_kg=row[21],
-                n_pallet=row[22],
-                pcs=row[23],
+    def _search_postport_packing_list(self, container_number, missing_delivery_types) -> List[Any]:
+        try:
+            return (
+                self.db_session.query(
+                    PackingList.destination,
+                    PackingList.PO_ID,
+                    PackingList.delivery_method,
+                    PackingList.note,
+                    PackingList.delivery_type,
+                    Shipment.shipment_batch_number,
+                    Shipment.is_shipment_schduled,
+                    Shipment.shipment_schduled_at,
+                    Shipment.shipment_appointment.label("shipment_appointment"),
+                    Shipment.is_shipped,
+                    Shipment.shipped_at_utc.label("shipped_at"),
+                    Shipment.is_arrived,
+                    Shipment.arrived_at_utc.label("arrived_at"),
+                    Shipment.pod_link,
+                    Shipment.pod_uploaded_at,
+                    Shipment.shipping_order_link,
+                    Shipment.appointment_id,
+                    Shipment.shipment_type,
+                    func.round(cast(func.sum(PackingList.cbm), Numeric), 4).label("cbm"),
+                    func.round(
+                        cast(func.sum(PackingList.total_weight_kg), Numeric), 2
+                    ).label("weight_kg"),
+                    func.sum(PackingList.n_pallet).label("n_pallet"),
+                    func.sum(PackingList.pcs).label("pcs"),
+                )
+                .join(PackingList.container)
+                .outerjoin(PackingList.shipment)
+                .filter(Container.container_number == container_number)
+                .filter(PackingList.delivery_type.in_(missing_delivery_types))
+                .group_by(
+                    PackingList.destination,
+                    PackingList.PO_ID,
+                    PackingList.delivery_method,
+                    PackingList.note,
+                    PackingList.delivery_type,
+                    Shipment.shipment_batch_number,
+                    Shipment.is_shipment_schduled,
+                    Shipment.shipment_schduled_at,
+                    Shipment.shipment_appointment,
+                    Shipment.is_shipped,
+                    Shipment.shipped_at_utc,
+                    Shipment.is_arrived,
+                    Shipment.arrived_at_utc,
+                    Shipment.pod_link,
+                    Shipment.pod_uploaded_at,
+                    Shipment.shipping_order_link,
+                    Shipment.appointment_id,
+                    Shipment.shipment_type,
+                )
+                .all()
             )
-            for row in raw_results
-        ]
+        except Exception as e:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{e}: No packing list history for {container_number}",
+            )
+
+    def _search_postport_packing_list_shipping_mark(self, shipping_mark, missing_delivery_types) -> List[Any]:
+        try:
+            return (
+                self.db_session.query(
+                    PackingList.destination,
+                    PackingList.PO_ID,
+                    PackingList.delivery_method,
+                    PackingList.note,
+                    PackingList.delivery_type,
+                    Shipment.shipment_batch_number,
+                    Shipment.is_shipment_schduled,
+                    Shipment.shipment_schduled_at,
+                    Shipment.shipment_appointment_utc.label("shipment_appointment"),
+                    Shipment.is_shipped,
+                    Shipment.shipped_at_utc.label("shipped_at"),
+                    Shipment.is_arrived,
+                    Shipment.arrived_at_utc.label("arrived_at"),
+                    Shipment.pod_link,
+                    Shipment.pod_uploaded_at,
+                    Shipment.shipping_order_link,
+                    Shipment.appointment_id,
+                    Shipment.shipment_type,
+                    func.round(cast(func.sum(PackingList.cbm), Numeric), 4).label("cbm"),
+                    func.round(
+                        cast(func.sum(PackingList.total_weight_kg), Numeric), 2
+                    ).label("weight_kg"),
+                    func.sum(PackingList.n_pallet).label("n_pallet"),
+                    func.sum(PackingList.pcs).label("pcs"),
+                )
+                .join(PackingList.container)
+                .outerjoin(PackingList.shipment)
+                .filter(PackingList.shipping_mark == shipping_mark)
+                .filter(PackingList.delivery_type.in_(missing_delivery_types))
+                .group_by(
+                    PackingList.destination,
+                    PackingList.PO_ID,
+                    PackingList.delivery_method,
+                    PackingList.note,
+                    PackingList.delivery_type,
+                    Shipment.shipment_batch_number,
+                    Shipment.is_shipment_schduled,
+                    Shipment.shipment_schduled_at,
+                    Shipment.shipment_appointment_utc,
+                    Shipment.is_shipped,
+                    Shipment.shipped_at_utc,
+                    Shipment.is_arrived,
+                    Shipment.arrived_at_utc,
+                    Shipment.pod_link,
+                    Shipment.pod_uploaded_at,
+                    Shipment.shipping_order_link,
+                    Shipment.appointment_id,
+                    Shipment.shipment_type,
+                )
+                .all()
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{e}: No packing list history for {shipping_mark}",
+            )
+
+    def _build_postport_history(self, pallet_results: List[Any], packing_list_results: List[Any] = None) -> OrderPostportResponse:
+        if packing_list_results is None:
+            packing_list_results = []
+
+        data = []
+        for row in pallet_results:
+            data.append(
+                PalletShipmentSummary(
+                    destination=row[0],
+                    PO_ID=row[1],
+                    delivery_method=row[2],
+                    note=row[3],
+                    delivery_type=row[4],
+                    master_shipment_batch_number=row[5],
+                    is_shipment_schduled=row[6],
+                    shipment_schduled_at=row[7],
+                    shipment_appointment=row[8],
+                    is_shipped=row[9],
+                    shipped_at=row[10],
+                    is_arrived=row[11],
+                    arrived_at=row[12],
+                    pod_link=row[13],
+                    pod_uploaded_at=row[14],
+                    shipping_order_link=row[15],
+                    appointment_id=row[16],
+                    shipment_type=row[17],
+                    exception_type=row[18],
+                    exception_reason=row[19],
+                    cbm=row[20],
+                    weight_kg=row[21],
+                    n_pallet=row[22],
+                    pcs=row[23],
+                )
+            )
+
+        for row in packing_list_results:
+            data.append(
+                PalletShipmentSummary(
+                    destination=row[0],
+                    PO_ID=row[1],
+                    delivery_method=row[2],
+                    note=row[3],
+                    delivery_type=row[4],
+                    master_shipment_batch_number=row[5],
+                    is_shipment_schduled=row[6],
+                    shipment_schduled_at=row[7],
+                    shipment_appointment=row[8],
+                    is_shipped=row[9],
+                    shipped_at=row[10],
+                    is_arrived=row[11],
+                    arrived_at=row[12],
+                    pod_link=row[13],
+                    pod_uploaded_at=row[14],
+                    shipping_order_link=row[15],
+                    appointment_id=row[16],
+                    shipment_type=row[17],
+                    exception_type=None,
+                    exception_reason=None,
+                    cbm=row[18],
+                    weight_kg=row[19],
+                    n_pallet=row[20],
+                    pcs=row[21],
+                )
+            )
+
         return OrderPostportResponse(shipment=data)
 
     def _convert_tz(self, ts: datetime) -> datetime:
