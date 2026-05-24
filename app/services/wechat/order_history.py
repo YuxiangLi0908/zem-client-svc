@@ -20,9 +20,10 @@ from typing import Optional
 import pytz
 from fastapi import HTTPException
 from sqlalchemy import Numeric, cast, distinct, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.data_models.db.container import Container
+from app.data_models.db.order import Order
 from app.data_models.db.pallet import Pallet
 from app.data_models.db.pallet_exception import PalletException
 from app.data_models.db.shipment import Shipment
