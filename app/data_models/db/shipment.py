@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.data_models.db.base import Base
@@ -14,6 +14,7 @@ class Shipment(Base):
     shipment_batch_number = Column(String(255), nullable=True)
     master_batch_number = Column(String(255), nullable=True)
     batch = Column(Integer, nullable=True, default=0)
+    shipment_cargo_id = Column(String(255), nullable=True)
     appointment_id = Column(String(255), nullable=True)
     origin = Column(String(255), nullable=True)
     destination = Column(String(255), nullable=True)
@@ -25,6 +26,8 @@ class Shipment(Base):
     shipment_appointment = Column(DateTime, nullable=True)
     shipment_appointment_tz = Column(String(20), nullable=True)
     shipment_appointment_utc = Column(DateTime, nullable=True)
+    pickup_time = Column(DateTime, nullable=True)
+    pickup_number = Column(String(500), nullable=True)
     is_shipped = Column(Boolean, nullable=True, default=False)
     shipped_at = Column(DateTime, nullable=True)
     shipped_at_utc = Column(DateTime, nullable=True)
@@ -47,6 +50,8 @@ class Shipment(Base):
     pod_link = Column(String(2000), nullable=True)
     pod_uploaded_at = Column(DateTime, nullable=True)
     shipping_order_link = Column(String(2000), nullable=True)
+    ltl_bol_link = Column(String(2000), nullable=True)
+    ltl_label_link = Column(String(2000), nullable=True)
     pallet_dumpped = Column(Float, nullable=True, default=0)
     abnormal_palletization = Column(Boolean, nullable=True, default=False)
     po_expired = Column(Boolean, nullable=True, default=False)
@@ -60,6 +65,15 @@ class Shipment(Base):
     ARM_BOL = Column(String(255), nullable=True)
     ARM_PRO = Column(String(255), nullable=True)
     express_number = Column(String(255), nullable=True)
+    is_print_label = Column(Boolean, nullable=True, default=False)
+    is_notified_customer = Column(Boolean, nullable=True, default=False)
+    pod_to_customer = Column(Boolean, nullable=True, default=False)
+    is_virtual_sp = Column(Boolean, nullable=True, default=False)
+    delivery_type = Column(String(255), nullable=True)
 
-    # Relationships
     fleet = relationship("Fleet", backref="shipment")
+
+    __table_args__ = (
+        Index("ix_shipment_batch_number", "shipment_batch_number"),
+        Index("ix_shipment_appointment_id", "appointment_id"),
+    )

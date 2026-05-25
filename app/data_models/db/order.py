@@ -26,44 +26,40 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(String(255), nullable=True)
-    customer_name_id = Column(
-        Integer, ForeignKey("warehouse_customer.id"), nullable=True
-    )
-    container_number_id = Column(
-        Integer, ForeignKey("warehouse_container.id"), nullable=True
-    )
-    warehouse_id = Column(
-        Integer, ForeignKey("warehouse_zemwarehouse.id"), nullable=True
-    )
-    vessel_id_id = Column(Integer, ForeignKey("warehouse_vessel.id"), nullable=True)
-    retrieval_id_id = Column(
-        Integer, ForeignKey("warehouse_retrieval.id"), nullable=True
-    )
-    offload_id_id = Column(Integer, ForeignKey("warehouse_offload.id"), nullable=True)
-    shipment_id_id = Column(Integer, ForeignKey("warehouse_shipment.id"), nullable=True)
-    invoice_id_id = Column(Integer, ForeignKey("warehouse_invoice.id"), nullable=True)
-
+    customer_name_id = Column(Integer, ForeignKey("warehouse_customer.id"), nullable=True)
+    container_number_id = Column(Integer, ForeignKey("warehouse_container.id"), nullable=True)
+    warehouse_id = Column(Integer, ForeignKey("warehouse_zemwarehouse.id"), nullable=True)
+    status = Column(String(20), nullable=True, default="unfinished")
     created_at = Column(DateTime, default=datetime.utcnow)
     eta = Column(Date, nullable=True)
     order_type = Column(String(255), nullable=True)
+    vessel_id_id = Column(Integer, ForeignKey("warehouse_vessel.id"), nullable=True)
+    export_unpacking_id = Column(Integer, nullable=True)
+    clearance_id = Column(Integer, nullable=True)
+    retrieval_id_id = Column(Integer, ForeignKey("warehouse_retrieval.id"), nullable=True)
+    offload_id_id = Column(Integer, ForeignKey("warehouse_offload.id"), nullable=True)
+    shipment_id_id = Column(Integer, ForeignKey("warehouse_shipment.id"), nullable=True)
     customer_do_link = Column(String(2000), nullable=True)
     do_sent = Column(Boolean, default=False)
+    do_sent_new = Column(String(10), nullable=True, default="未提供")
+    invoice_id_id = Column(Integer, nullable=True)
     add_to_t49 = Column(Boolean, default=False)
     packing_list_updloaded = Column(Boolean, default=False)
     cancel_notification = Column(Boolean, default=False)
     cancel_time = Column(Date, nullable=True)
-    invoice_status = Column(String(255), nullable=True)
+    invoice_status = Column(String(255), nullable=True, default="unrecorded")
     invoice_reject = Column(Boolean, default=False)
     invoice_reject_reason = Column(String(255), nullable=True)
+    receivable_status_id = Column(Integer, nullable=True)
+    payable_status_id = Column(Integer, nullable=True)
+    unpacking_priority = Column(String(10), nullable=True, default="P4")
 
-    # Relationships
     customer = relationship("Customer", backref="order")
     container = relationship("Container", backref="order")
     warehouse = relationship("Warehouse", backref="order")
     vessel = relationship("Vessel", backref="order")
     retrieval = relationship("Retrieval", backref="order")
     offload = relationship("Offload", backref="order")
-    # shipment = relationship("Shipment", back_populates="order")
 
     __table_args__ = (
         Index("ix_order_order_id", "order_id"),
