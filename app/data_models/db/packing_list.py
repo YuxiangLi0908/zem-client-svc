@@ -61,4 +61,8 @@ class PackingList(Base):
     ltl_address_type = Column(String(100), nullable=True)
 
     container = relationship("Container", backref="packing_list")
-    shipment = relationship("Shipment", backref="packing_list")
+    shipment = relationship(
+        "Shipment",
+        foreign_keys=[master_shipment_batch_number_id],
+        backref="packinglists_master",
+    )

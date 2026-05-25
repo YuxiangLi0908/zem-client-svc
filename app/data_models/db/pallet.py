@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.data_models.db.base import Base
@@ -13,6 +13,8 @@ class Pallet(Base):
     packing_list_id = Column(Integer, ForeignKey("warehouse_packinglist.id"), nullable=True)
     container_number_id = Column(Integer, ForeignKey("warehouse_container.id"), nullable=True)
     shipment_batch_number_id = Column(Integer, ForeignKey("warehouse_shipment.id"), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    released_at = Column(DateTime, nullable=True)
     master_shipment_batch_number_id = Column(Integer, ForeignKey("warehouse_shipment.id"), nullable=True)
     transfer_batch_number_id = Column(Integer, nullable=True)
     invoice_delivery_id = Column(Integer, nullable=True)
