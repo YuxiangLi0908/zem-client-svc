@@ -12,7 +12,6 @@ class Pallet(Base):
     id = Column(Integer, primary_key=True, index=True)
     packing_list_id = Column(Integer, ForeignKey("warehouse_packinglist.id"), nullable=True)
     container_number_id = Column(Integer, ForeignKey("warehouse_container.id"), nullable=True)
-    shipment_batch_number_id = Column(Integer, ForeignKey("warehouse_shipment.id"), nullable=True)
     master_shipment_batch_number_id = Column(Integer, ForeignKey("warehouse_shipment.id"), nullable=True)
     transfer_batch_number_id = Column(Integer, nullable=True)
     invoice_delivery_id = Column(Integer, nullable=True)

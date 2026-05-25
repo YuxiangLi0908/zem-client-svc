@@ -11,7 +11,6 @@ class PackingList(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     container_number_id = Column(Integer, ForeignKey("warehouse_container.id"), nullable=True)
-    shipment_batch_number_id = Column(Integer, ForeignKey("warehouse_shipment.id"), nullable=True)
     master_shipment_batch_number_id = Column(Integer, ForeignKey("warehouse_shipment.id"), nullable=True)
     quote_id_id = Column(Integer, nullable=True)
 
