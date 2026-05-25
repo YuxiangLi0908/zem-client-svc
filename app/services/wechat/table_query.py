@@ -4,6 +4,13 @@ from sqlalchemy import inspect
 from app.data_models.db.user import Customer, AuthUser
 from app.data_models.db.container import Container
 from app.data_models.db.order import Order
+from app.data_models.db.warehouse import Warehouse
+from app.data_models.db.vessel import Vessel
+from app.data_models.db.retrieval import Retrieval
+from app.data_models.db.offload import Offload
+from app.data_models.db.shipment import Shipment
+from app.data_models.db.fleet import Fleet
+from app.data_models.db.packing_list import PackingList
 from app.data_models.wechat.order_tracking import TableQueryResponse
 
 
@@ -13,6 +20,32 @@ class TableQuery:
 
     CONTAINER_JOIN_DIRECT = "direct"
     CONTAINER_JOIN_THROUGH_ORDER = "through_order"
+
+    FK_DISPLAY_CONFIG = {
+        "Order": {
+            "customer_name_id": {"model": Customer, "display_field": "zem_name", "label": "customer_name"},
+            "container_number_id": {"model": Container, "display_field": "container_number", "label": "container_number"},
+            "warehouse_id": {"model": Warehouse, "display_field": "name", "label": "warehouse"},
+            "vessel_id_id": {"model": Vessel, "display_field": "vessel_id", "label": "vessel"},
+            "retrieval_id_id": {"model": Retrieval, "display_field": "retrieval_id", "label": "retrieval"},
+            "offload_id_id": {"model": Offload, "display_field": "offload_id", "label": "offload"},
+            "shipment_id_id": {"model": Shipment, "display_field": "shipment_batch_number", "label": "shipment"},
+        },
+        "Pallet": {
+            "packing_list_id": {"model": PackingList, "display_field": "id", "label": "packing_list"},
+            "container_number_id": {"model": Container, "display_field": "container_number", "label": "container_number"},
+            "shipment_batch_number_id": {"model": Shipment, "display_field": "shipment_batch_number", "label": "shipment_batch_number"},
+            "master_shipment_batch_number_id": {"model": Shipment, "display_field": "shipment_batch_number", "label": "master_shipment_batch_number"},
+        },
+        "PackingList": {
+            "container_number_id": {"model": Container, "display_field": "container_number", "label": "container_number"},
+            "shipment_batch_number_id": {"model": Shipment, "display_field": "shipment_batch_number", "label": "shipment_batch_number"},
+            "master_shipment_batch_number_id": {"model": Shipment, "display_field": "shipment_batch_number", "label": "master_shipment_batch_number"},
+        },
+        "Shipment": {
+            "fleet_number_id": {"model": Fleet, "display_field": "fleet_number", "label": "fleet_number"},
+        },
+    }
 
     TABLE_CONFIG = {
         "Shipment": {
@@ -149,23 +182,46 @@ class TableQuery:
             return []
         return config["search_fields"]
 
-    def _convert_record_to_dict(self, record) -> Dict:
+    def _convert_record_to_dict(self, record, table_name: str = "") -> Dict:
         if not record:
             return {}
 
         result = {}
         mapper = inspect(type(record))
 
+        fk_config = self.FK_DISPLAY_CONFIG.get(table_name, {})
+
         for column in mapper.columns:
             value = getattr(record, column.key)
-            if hasattr(value, "isoformat"):
-                result[column.key] = value.isoformat()
-            elif isinstance(value, (int, float, str, bool, type(None))):
-                result[column.key] = value
+            if column.key in fk_config:
+                display_value = self._resolve_fk_display(column.key, value, fk_config[column.key])
+                label = fk_config[column.key]["label"]
+                if display_value is not None:
+                    result[label] = display_value
+                elif value is not None:
+                    result[label] = value
             else:
-                result[column.key] = str(value)
+                if hasattr(value, "isoformat"):
+                    result[column.key] = value.isoformat()
+                elif isinstance(value, (int, float, str, bool, type(None))):
+                    result[column.key] = value
+                else:
+                    result[column.key] = str(value)
 
         return result
+
+    def _resolve_fk_display(self, fk_field: str, fk_value, config: Dict):
+        if fk_value is None:
+            return None
+        try:
+            model = config["model"]
+            display_field = config["display_field"]
+            related = self.db_session.query(model).filter(model.id == fk_value).first()
+            if related:
+                return getattr(related, display_field, None)
+        except Exception:
+            pass
+        return None
 
     def _query_by_container_number(self, model, table_name: str, search_value: str):
         config = self.TABLE_CONFIG.get(table_name, {})
@@ -266,7 +322,7 @@ class TableQuery:
                     )
                 records = query.filter(column_attr.ilike(f"%{search_value}%")).limit(50).all()
 
-            result_records = [self._convert_record_to_dict(r) for r in records]
+            result_records = [self._convert_record_to_dict(r, table_name) for r in records]
 
             return TableQueryResponse(
                 has_permission=True,
