@@ -2,12 +2,17 @@ from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect
 from app.data_models.db.user import Customer, AuthUser
+from app.data_models.db.container import Container
+from app.data_models.db.order import Order
 from app.data_models.wechat.order_tracking import TableQueryResponse
 
 
 class TableQuery:
 
     AUTHORIZED_USERS = {"sangwei", "yuxiang.li", "qyj"}
+
+    CONTAINER_JOIN_DIRECT = "direct"
+    CONTAINER_JOIN_THROUGH_ORDER = "through_order"
 
     TABLE_CONFIG = {
         "Shipment": {
@@ -32,14 +37,16 @@ class TableQuery:
             "model_module": "app.data_models.db.container",
             "model_class": "Container",
             "search_fields": [
-                {"name": "id", "label": "ID", "type": "integer"},
                 {"name": "container_number", "label": "柜号", "type": "string"},
+                {"name": "id", "label": "ID", "type": "integer"},
             ],
         },
         "Order": {
             "model_module": "app.data_models.db.order",
             "model_class": "Order",
+            "container_join": CONTAINER_JOIN_DIRECT,
             "search_fields": [
+                {"name": "container_number", "label": "柜号", "type": "string"},
                 {"name": "id", "label": "ID", "type": "integer"},
                 {"name": "order_id", "label": "Order ID", "type": "string"},
             ],
@@ -47,7 +54,9 @@ class TableQuery:
         "Pallet": {
             "model_module": "app.data_models.db.pallet",
             "model_class": "Pallet",
+            "container_join": CONTAINER_JOIN_DIRECT,
             "search_fields": [
+                {"name": "container_number", "label": "柜号", "type": "string"},
                 {"name": "id", "label": "ID", "type": "integer"},
                 {"name": "PO_ID", "label": "PO ID", "type": "string"},
             ],
@@ -55,7 +64,9 @@ class TableQuery:
         "PackingList": {
             "model_module": "app.data_models.db.packing_list",
             "model_class": "PackingList",
+            "container_join": CONTAINER_JOIN_DIRECT,
             "search_fields": [
+                {"name": "container_number", "label": "柜号", "type": "string"},
                 {"name": "id", "label": "ID", "type": "integer"},
                 {"name": "PO_ID", "label": "PO ID", "type": "string"},
             ],
@@ -63,7 +74,9 @@ class TableQuery:
         "Retrieval": {
             "model_module": "app.data_models.db.retrieval",
             "model_class": "Retrieval",
+            "container_join": CONTAINER_JOIN_THROUGH_ORDER,
             "search_fields": [
+                {"name": "container_number", "label": "柜号", "type": "string"},
                 {"name": "id", "label": "ID", "type": "integer"},
                 {"name": "retrieval_id", "label": "Retrieval ID", "type": "string"},
             ],
@@ -71,7 +84,9 @@ class TableQuery:
         "Offload": {
             "model_module": "app.data_models.db.offload",
             "model_class": "Offload",
+            "container_join": CONTAINER_JOIN_THROUGH_ORDER,
             "search_fields": [
+                {"name": "container_number", "label": "柜号", "type": "string"},
                 {"name": "id", "label": "ID", "type": "integer"},
                 {"name": "offload_id", "label": "Offload ID", "type": "string"},
             ],
@@ -79,7 +94,9 @@ class TableQuery:
         "Vessel": {
             "model_module": "app.data_models.db.vessel",
             "model_class": "Vessel",
+            "container_join": CONTAINER_JOIN_THROUGH_ORDER,
             "search_fields": [
+                {"name": "container_number", "label": "柜号", "type": "string"},
                 {"name": "id", "label": "ID", "type": "integer"},
                 {"name": "vessel_id", "label": "Vessel ID", "type": "string"},
             ],
@@ -150,6 +167,37 @@ class TableQuery:
 
         return result
 
+    def _query_by_container_number(self, model, table_name: str, search_value: str):
+        config = self.TABLE_CONFIG.get(table_name, {})
+        join_type = config.get("container_join")
+
+        if join_type == self.CONTAINER_JOIN_DIRECT:
+            return (
+                self.db_session.query(model)
+                .join(Container, Container.id == model.container_number_id)
+                .filter(Container.container_number.ilike(f"%{search_value}%"))
+                .limit(50)
+                .all()
+            )
+        elif join_type == self.CONTAINER_JOIN_THROUGH_ORDER:
+            fk_map = {
+                "Retrieval": Order.retrieval_id_id,
+                "Offload": Order.offload_id_id,
+                "Vessel": Order.vessel_id_id,
+            }
+            order_fk = fk_map.get(table_name)
+            if not order_fk:
+                return []
+            return (
+                self.db_session.query(model)
+                .join(Order, order_fk == model.id)
+                .join(Container, Container.id == Order.container_number_id)
+                .filter(Container.container_number.ilike(f"%{search_value}%"))
+                .limit(50)
+                .all()
+            )
+        return []
+
     def query_table(self, table_name: str, search_field: str, search_value: str) -> TableQueryResponse:
         if not self._is_authorized():
             return TableQueryResponse(
@@ -188,7 +236,9 @@ class TableQuery:
         records = []
 
         try:
-            if search_field == "id":
+            if search_field == "container_number":
+                records = self._query_by_container_number(model, table_name, search_value)
+            elif search_field == "id":
                 try:
                     record_id = int(search_value)
                     record = query.filter(model.id == record_id).first()
