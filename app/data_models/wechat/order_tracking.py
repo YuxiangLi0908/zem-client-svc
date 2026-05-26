@@ -266,3 +266,12 @@ class TableQueryResponse(BaseModel):
     available_fields: List[dict] = []
     tables: List[dict] = []
 
+
+class SqlQueryRequest(BaseModel):
+    sql: str
+    output_format: str = "display"
+
+
+class SqlQueryResponse(BaseModel):
+    model_config = ConfigDict(extra='allow')
+

@@ -1,6 +1,7 @@
 from typing import List, Dict, Optional
+from io import BytesIO
 from sqlalchemy.orm import Session
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 from app.data_models.db.user import Customer, AuthUser
 from app.data_models.db.container import Container
 from app.data_models.db.order import Order
@@ -365,3 +366,87 @@ class TableQuery:
             available_fields=[],
             tables=self._get_available_tables(),
         )
+
+    def execute_sql(self, sql: str, output_format: str = "display") -> Dict:
+        if not self._is_authorized():
+            return {"success": False, "message": "您没有权限使用SQL查询功能"}
+
+        sql_stripped = sql.strip()
+        if not sql_stripped:
+            return {"success": False, "message": "SQL语句不能为空"}
+
+        sql_upper = sql_stripped.upper().lstrip()
+        if not sql_upper.startswith("SELECT"):
+            return {"success": False, "message": "仅支持SELECT查询语句"}
+
+        forbidden_keywords = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE", "EXEC", "EXECUTE"]
+        sql_check = sql_upper.split()
+        for kw in forbidden_keywords:
+            if kw in sql_check:
+                return {"success": False, "message": f"不允许执行{kw}操作"}
+
+        try:
+            result = self.db_session.execute(text(sql_stripped))
+            columns = list(result.keys())
+            rows = result.fetchall()
+
+            if output_format == "excel":
+                return self._generate_excel(columns, rows)
+
+            records = []
+            for row in rows:
+                record = {}
+                for i, col in enumerate(columns):
+                    val = row[i]
+                    if hasattr(val, "isoformat"):
+                        val = val.isoformat()
+                    elif val is None:
+                        val = ""
+                    else:
+                        val = str(val)
+                    record[col] = val
+                records.append(record)
+
+            return {
+                "success": True,
+                "message": f"查询成功，共{len(records)}条记录",
+                "columns": columns,
+                "records": records,
+                "record_count": len(records),
+            }
+        except Exception as e:
+            return {"success": False, "message": f"SQL执行失败: {str(e)}"}
+
+    def _generate_excel(self, columns: list, rows: list) -> Dict:
+        try:
+            import pandas as pd
+
+            data = []
+            for row in rows:
+                row_data = []
+                for i, col in enumerate(columns):
+                    val = row[i]
+                    if hasattr(val, "isoformat"):
+                        val = val.isoformat()
+                    elif val is None:
+                        val = ""
+                    row_data.append(val)
+                data.append(row_data)
+
+            df = pd.DataFrame(data, columns=columns)
+            buffer = BytesIO()
+            df.to_excel(buffer, index=False, engine="openpyxl")
+            buffer.seek(0)
+
+            import base64
+            excel_base64 = base64.b64encode(buffer.read()).decode("utf-8")
+
+            return {
+                "success": True,
+                "message": f"导出成功，共{len(rows)}条记录",
+                "output_format": "excel",
+                "excel_data": excel_base64,
+                "record_count": len(rows),
+            }
+        except Exception as e:
+            return {"success": False, "message": f"Excel生成失败: {str(e)}"}

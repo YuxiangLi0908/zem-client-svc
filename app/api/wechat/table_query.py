@@ -9,7 +9,7 @@ from app.services.wechat.table_query import TableQuery
 from app.services.user_auth import get_current_user
 from app.services.db_session import db_session
 from app.data_models.db.user import Customer, AuthUser
-from app.data_models.wechat.order_tracking import TableQueryResponse, TableQueryRequest
+from app.data_models.wechat.order_tracking import TableQueryResponse, TableQueryRequest, SqlQueryRequest, SqlQueryResponse
 
 router = APIRouter()
 
@@ -54,4 +54,15 @@ async def execute_table_query(
             available_fields=[],
             tables=[],
         )
+
+
+@router.post("/table_query/sql", response_model=SqlQueryResponse, name="wechat_sql_query")
+async def execute_sql_query(
+    request: SqlQueryRequest,
+    current_user: Customer | AuthUser = Depends(get_current_user),
+    db: Session = Depends(db_session.get_db),
+) -> SqlQueryResponse:
+    table_query = TableQuery(user=current_user, db_session=db)
+    result = table_query.execute_sql(sql=request.sql, output_format=request.output_format)
+    return SqlQueryResponse(**result)
 
