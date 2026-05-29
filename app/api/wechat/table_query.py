@@ -9,7 +9,7 @@ from app.services.wechat.table_query import TableQuery
 from app.services.user_auth import get_current_user
 from app.services.db_session import db_session
 from app.data_models.db.user import Customer, AuthUser
-from app.data_models.wechat.order_tracking import TableQueryResponse, TableQueryRequest, SqlQueryRequest, SqlQueryResponse
+from app.data_models.wechat.order_tracking import TableQueryResponse, TableQueryRequest, SqlQueryRequest, SqlQueryResponse, DeleteShipmentRequest, DeleteShipmentResponse
 
 router = APIRouter()
 
@@ -65,4 +65,15 @@ async def execute_sql_query(
     table_query = TableQuery(user=current_user, db_session=db)
     result = table_query.execute_sql(sql=request.sql, output_format=request.output_format)
     return SqlQueryResponse(**result)
+
+
+@router.post("/table_query/delete_shipment", response_model=DeleteShipmentResponse, name="wechat_delete_shipment")
+async def delete_shipment(
+    request: DeleteShipmentRequest,
+    current_user: Customer | AuthUser = Depends(get_current_user),
+    db: Session = Depends(db_session.get_db),
+) -> DeleteShipmentResponse:
+    table_query = TableQuery(user=current_user, db_session=db)
+    result = table_query.delete_shipment(shipment_id=request.shipment_id)
+    return DeleteShipmentResponse(**result)
 
