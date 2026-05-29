@@ -275,3 +275,12 @@ class SqlQueryRequest(BaseModel):
 class SqlQueryResponse(BaseModel):
     model_config = ConfigDict(extra='allow')
 
+
+class DeleteShipmentRequest(BaseModel):
+    shipment_id: int
+
+
+class DeleteShipmentResponse(BaseModel):
+    success: bool = True
+    message: Optional[str] = None
+
