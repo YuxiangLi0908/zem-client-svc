@@ -455,15 +455,54 @@ class TableQuery:
         if not self._is_authorized():
             return {"success": False, "message": "您没有权限执行删除操作"}
 
+        from app.data_models.db.pallet import Pallet
+        from app.data_models.db.packing_list import PackingList
+        from app.data_models.db.order import Order
+
         try:
             shipment = self.db_session.query(Shipment).filter(Shipment.id == shipment_id).first()
             if not shipment:
                 return {"success": False, "message": f"未找到ID为{shipment_id}的Shipment记录"}
 
+            pallets = self.db_session.query(Pallet).filter(
+                (Pallet.shipment_batch_number_id == shipment_id) |
+                (Pallet.master_shipment_batch_number_id == shipment_id)
+            ).all()
+            for p in pallets:
+                if p.shipment_batch_number_id == shipment_id:
+                    p.shipment_batch_number_id = None
+                if p.master_shipment_batch_number_id == shipment_id:
+                    p.master_shipment_batch_number_id = None
+
+            packing_lists = self.db_session.query(PackingList).filter(
+                (PackingList.shipment_batch_number_id == shipment_id) |
+                (PackingList.master_shipment_batch_number_id == shipment_id)
+            ).all()
+            for pl in packing_lists:
+                if pl.shipment_batch_number_id == shipment_id:
+                    pl.shipment_batch_number_id = None
+                if pl.master_shipment_batch_number_id == shipment_id:
+                    pl.master_shipment_batch_number_id = None
+
+            orders = self.db_session.query(Order).filter(Order.shipment_id_id == shipment_id).all()
+            for o in orders:
+                o.shipment_id_id = None
+
+            fleet_id = shipment.fleet_number_id
+
             self.db_session.delete(shipment)
+
+            if fleet_id:
+                fleet = self.db_session.query(Fleet).filter(Fleet.id == fleet_id).first()
+                if fleet:
+                    self.db_session.delete(fleet)
+
             self.db_session.commit()
 
-            return {"success": True, "message": f"已删除Shipment记录(ID={shipment_id})"}
+            msg = f"已删除Shipment记录(ID={shipment_id})"
+            if fleet_id:
+                msg += f"，已删除关联Fleet记录(ID={fleet_id})"
+            return {"success": True, "message": msg}
         except Exception as e:
             self.db_session.rollback()
             return {"success": False, "message": f"删除失败: {str(e)}"}
