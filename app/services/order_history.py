@@ -255,9 +255,7 @@ class OrderTracking:
                     {
                         "status": "EMPTY_RETURN",
                         "description": f"已归还空箱",
-                        "timestamp": self._convert_tz(
-                            order_data["retrieval"]["empty_returned_at"]
-                        ) if order_data["retrieval"].get("empty_returned_at") else None,
+                        "timestamp": order_data["retrieval"]["empty_returned_at"] if order_data["retrieval"].get("empty_returned_at") else None,
                     }
                 )
         order_data["history"] = preport_history
@@ -834,9 +832,7 @@ class BatchOrderTracking:
                     {
                         "status": "EMPTY_RETURN",
                         "description": f"已归还空箱",
-                        "timestamp": self._convert_tz(
-                            order_data["retrieval"]["empty_returned_at"]
-                        ) if order_data["retrieval"].get("empty_returned_at") else None,
+                        "timestamp": order_data["retrieval"]["empty_returned_at"] if order_data["retrieval"].get("empty_returned_at") else None,
                     }
                 )
         order_data["history"] = preport_history
