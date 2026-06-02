@@ -12,6 +12,7 @@ from app.data_models.db.offload import Offload
 from app.data_models.db.shipment import Shipment
 from app.data_models.db.fleet import Fleet
 from app.data_models.db.packing_list import PackingList
+from app.data_models.db.invoice_v2 import Invoicev2, InvoiceStatusv2, InvoiceItemv2
 from app.data_models.wechat.order_tracking import TableQueryResponse
 
 
@@ -45,6 +46,18 @@ class TableQuery:
         },
         "Shipment": {
             "fleet_number_id": {"model": Fleet, "display_field": "fleet_number", "label": "fleet_number"},
+        },
+        "Invoicev2": {
+            "customer_id": {"model": Customer, "display_field": "zem_name", "label": "customer"},
+            "container_number_id": {"model": Container, "display_field": "container_number", "label": "container_number"},
+        },
+        "InvoiceStatusv2": {
+            "container_number_id": {"model": Container, "display_field": "container_number", "label": "container_number"},
+            "invoice_id": {"model": Invoicev2, "display_field": "invoice_number", "label": "invoice_number"},
+        },
+        "InvoiceItemv2": {
+            "container_number_id": {"model": Container, "display_field": "container_number", "label": "container_number"},
+            "invoice_number_id": {"model": Invoicev2, "display_field": "invoice_number", "label": "invoice_number"},
         },
     }
 
@@ -141,6 +154,36 @@ class TableQuery:
             "search_fields": [
                 {"name": "id", "label": "ID", "type": "integer"},
                 {"name": "zem_name", "label": "ZEM Name", "type": "string"},
+            ],
+        },
+        "Invoicev2": {
+            "model_module": "app.data_models.db.invoice_v2",
+            "model_class": "Invoicev2",
+            "container_join": CONTAINER_JOIN_DIRECT,
+            "search_fields": [
+                {"name": "invoice_number", "label": "Invoice Number", "type": "string"},
+                {"name": "container_number", "label": "柜号", "type": "string"},
+                {"name": "id", "label": "ID", "type": "integer"},
+            ],
+        },
+        "InvoiceStatusv2": {
+            "model_module": "app.data_models.db.invoice_v2",
+            "model_class": "InvoiceStatusv2",
+            "container_join": CONTAINER_JOIN_DIRECT,
+            "search_fields": [
+                {"name": "invoice_number", "label": "Invoice Number", "type": "string"},
+                {"name": "container_number", "label": "柜号", "type": "string"},
+                {"name": "id", "label": "ID", "type": "integer"},
+            ],
+        },
+        "InvoiceItemv2": {
+            "model_module": "app.data_models.db.invoice_v2",
+            "model_class": "InvoiceItemv2",
+            "container_join": CONTAINER_JOIN_DIRECT,
+            "search_fields": [
+                {"name": "invoice_number", "label": "Invoice Number", "type": "string"},
+                {"name": "container_number", "label": "柜号", "type": "string"},
+                {"name": "id", "label": "ID", "type": "integer"},
             ],
         },
     }
@@ -311,19 +354,36 @@ class TableQuery:
                         tables=self._get_available_tables(),
                     )
             else:
-                column_attr = getattr(model, search_field, None)
-                if column_attr is None:
-                    return TableQueryResponse(
-                        has_permission=True,
-                        message=f"表 {table_name} 不存在字段 {search_field}",
-                        records=[],
-                        record_count=0,
-                        available_fields=search_fields,
-                        tables=self._get_available_tables(),
+                if search_field == "invoice_number" and table_name in ("InvoiceStatusv2", "InvoiceItemv2"):
+                    invoice_fk = InvoiceStatusv2.invoice_id if table_name == "InvoiceStatusv2" else InvoiceItemv2.invoice_number_id
+                    records = (
+                        self.db_session.query(model)
+                        .join(Invoicev2, Invoicev2.id == invoice_fk)
+                        .filter(Invoicev2.invoice_number.ilike(f"%{search_value}%"))
+                        .limit(50)
+                        .all()
                     )
-                records = query.filter(column_attr.ilike(f"%{search_value}%")).limit(50).all()
+                else:
+                    column_attr = getattr(model, search_field, None)
+                    if column_attr is None:
+                        return TableQueryResponse(
+                            has_permission=True,
+                            message=f"表 {table_name} 不存在字段 {search_field}",
+                            records=[],
+                            record_count=0,
+                            available_fields=search_fields,
+                            tables=self._get_available_tables(),
+                        )
+                    records = query.filter(column_attr.ilike(f"%{search_value}%")).limit(50).all()
 
             result_records = [self._convert_record_to_dict(r, table_name) for r in records]
+
+            if table_name == "Invoicev2":
+                for i, r in enumerate(records):
+                    item_count = self.db_session.query(InvoiceItemv2).filter(
+                        InvoiceItemv2.invoice_number_id == r.id
+                    ).count()
+                    result_records[i]["invoice_item_count"] = item_count
 
             return TableQueryResponse(
                 has_permission=True,
