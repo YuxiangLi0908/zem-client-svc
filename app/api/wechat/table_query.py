@@ -9,7 +9,7 @@ from app.services.wechat.table_query import TableQuery
 from app.services.user_auth import get_current_user
 from app.services.db_session import db_session
 from app.data_models.db.user import Customer, AuthUser
-from app.data_models.wechat.order_tracking import TableQueryResponse, TableQueryRequest, SqlQueryRequest, SqlQueryResponse, DeleteShipmentRequest, DeleteShipmentResponse
+from app.data_models.wechat.order_tracking import TableQueryResponse, TableQueryRequest, SqlQueryRequest, SqlQueryResponse, DeleteShipmentRequest, DeleteShipmentResponse, DbOperationRequest, DbOperationResponse
 
 router = APIRouter()
 
@@ -76,4 +76,33 @@ async def delete_shipment(
     table_query = TableQuery(user=current_user, db_session=db)
     result = table_query.delete_shipment(shipment_id=request.shipment_id)
     return DeleteShipmentResponse(**result)
+
+
+@router.post("/table_query/db_operation", response_model=DbOperationResponse, name="wechat_db_operation")
+async def execute_db_operation(
+    request: DbOperationRequest,
+    current_user: Customer | AuthUser = Depends(get_current_user),
+    db: Session = Depends(db_session.get_db),
+) -> DbOperationResponse:
+    table_query = TableQuery(user=current_user, db_session=db)
+    result = table_query.execute_db_operation(
+        table_name=request.table_name,
+        operation=request.operation,
+        conditions=[c.model_dump() for c in request.conditions],
+        update_field=request.update_field,
+        update_value=request.update_value,
+        output_format=request.output_format,
+    )
+    return DbOperationResponse(**result)
+
+
+@router.get("/table_query/columns/{table_name}", response_model=DbOperationResponse, name="wechat_table_columns")
+async def get_table_columns(
+    table_name: str,
+    current_user: Customer | AuthUser = Depends(get_current_user),
+    db: Session = Depends(db_session.get_db),
+) -> DbOperationResponse:
+    table_query = TableQuery(user=current_user, db_session=db)
+    result = table_query.get_table_columns(table_name=table_name)
+    return DbOperationResponse(**result)
 

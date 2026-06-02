@@ -284,3 +284,22 @@ class DeleteShipmentResponse(BaseModel):
     success: bool = True
     message: Optional[str] = None
 
+
+class DbOperationCondition(BaseModel):
+    field: str
+    operator: str = "="
+    value: str
+
+
+class DbOperationRequest(BaseModel):
+    table_name: str
+    operation: str
+    conditions: List[DbOperationCondition] = []
+    update_field: Optional[str] = None
+    update_value: Optional[str] = None
+    output_format: str = "display"
+
+
+class DbOperationResponse(BaseModel):
+    model_config = ConfigDict(extra='allow')
+

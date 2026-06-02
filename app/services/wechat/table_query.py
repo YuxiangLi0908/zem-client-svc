@@ -566,3 +566,185 @@ class TableQuery:
         except Exception as e:
             self.db_session.rollback()
             return {"success": False, "message": f"删除失败: {str(e)}"}
+
+    def execute_db_operation(self, table_name: str, operation: str, conditions: list,
+                             update_field: str = None, update_value: str = None,
+                             output_format: str = "display") -> Dict:
+        if not self._is_authorized():
+            return {"success": False, "message": "您没有权限执行此操作"}
+
+        if operation not in ("query", "update", "delete"):
+            return {"success": False, "message": f"不支持的操作类型: {operation}"}
+
+        if operation == "update" and (not update_field or update_value is None):
+            return {"success": False, "message": "更新操作必须指定字段和新值"}
+
+        model = self._get_model_by_name(table_name)
+        if not model:
+            return {"success": False, "message": f"未找到表: {table_name}"}
+
+        try:
+            query = self.db_session.query(model)
+            query = self._apply_conditions(query, model, conditions)
+
+            if operation == "query":
+                records = query.limit(200).all()
+                result_records = [self._convert_record_to_dict(r, table_name) for r in records]
+
+                if table_name == "Invoicev2":
+                    for i, r in enumerate(records):
+                        item_count = self.db_session.query(InvoiceItemv2).filter(
+                            InvoiceItemv2.invoice_number_id == r.id
+                        ).count()
+                        result_records[i]["invoice_item_count"] = item_count
+
+                if output_format == "excel" and result_records:
+                    return self._generate_excel_from_records(result_records)
+
+                return {
+                    "success": True,
+                    "message": f"查询到{len(result_records)}条记录",
+                    "records": result_records,
+                    "record_count": len(result_records),
+                }
+
+            elif operation == "update":
+                count = query.count()
+                if count == 0:
+                    return {"success": False, "message": "未找到符合条件的记录"}
+
+                column_attr = getattr(model, update_field, None)
+                if column_attr is None:
+                    return {"success": False, "message": f"字段{update_field}不存在"}
+
+                cast_value = self._cast_value(column_attr, update_value)
+                query.update({update_field: cast_value}, synchronize_session="fetch")
+                self.db_session.commit()
+
+                return {
+                    "success": True,
+                    "message": f"已更新{count}条记录的{update_field}为{update_value}",
+                }
+
+            elif operation == "delete":
+                count = query.count()
+                if count == 0:
+                    return {"success": False, "message": "未找到符合条件的记录"}
+
+                query.delete(synchronize_session="fetch")
+                self.db_session.commit()
+
+                return {
+                    "success": True,
+                    "message": f"已删除{count}条记录",
+                }
+
+        except Exception as e:
+            self.db_session.rollback()
+            return {"success": False, "message": f"操作失败: {str(e)}"}
+
+    def _apply_conditions(self, query, model, conditions: list):
+        for cond in conditions:
+            field_name = cond.get("field", "")
+            operator = cond.get("operator", "=")
+            value = cond.get("value", "")
+
+            column_attr = getattr(model, field_name, None)
+            if column_attr is None:
+                continue
+
+            if operator == "=":
+                cast_value = self._cast_value(column_attr, value)
+                query = query.filter(column_attr == cast_value)
+            elif operator == "!=":
+                cast_value = self._cast_value(column_attr, value)
+                query = query.filter(column_attr != cast_value)
+            elif operator == "like":
+                query = query.filter(column_attr.ilike(f"%{value}%"))
+            elif operator == ">":
+                cast_value = self._cast_value(column_attr, value)
+                query = query.filter(column_attr > cast_value)
+            elif operator == "<":
+                cast_value = self._cast_value(column_attr, value)
+                query = query.filter(column_attr < cast_value)
+            elif operator == ">=":
+                cast_value = self._cast_value(column_attr, value)
+                query = query.filter(column_attr >= cast_value)
+            elif operator == "<=":
+                cast_value = self._cast_value(column_attr, value)
+                query = query.filter(column_attr <= cast_value)
+
+        return query
+
+    def _cast_value(self, column_attr, value: str):
+        try:
+            col_type = str(column_attr.type).upper()
+            if "INTEGER" in col_type or "BIGINT" in col_type:
+                return int(value)
+            elif "FLOAT" in col_type or "NUMERIC" in col_type or "DECIMAL" in col_type:
+                return float(value)
+            elif "BOOLEAN" in col_type:
+                return value.lower() in ("true", "1", "yes")
+            else:
+                return value
+        except (ValueError, TypeError):
+            return value
+
+    def _generate_excel_from_records(self, records: list) -> Dict:
+        try:
+            import pandas as pd
+
+            if not records:
+                return {"success": False, "message": "无数据可导出"}
+
+            columns = list(records[0].keys())
+            data = []
+            for record in records:
+                row = []
+                for col in columns:
+                    val = record.get(col, "")
+                    if val is None:
+                        val = ""
+                    elif hasattr(val, "isoformat"):
+                        val = val.isoformat()
+                    else:
+                        val = str(val)
+                    row.append(val)
+                data.append(row)
+
+            df = pd.DataFrame(data, columns=columns)
+            buffer = BytesIO()
+            df.to_excel(buffer, index=False, engine="openpyxl")
+            buffer.seek(0)
+
+            import base64
+            excel_base64 = base64.b64encode(buffer.read()).decode("utf-8")
+
+            return {
+                "success": True,
+                "message": f"导出成功，共{len(records)}条记录",
+                "output_format": "excel",
+                "excel_data": excel_base64,
+                "record_count": len(records),
+            }
+        except Exception as e:
+            return {"success": False, "message": f"Excel生成失败: {str(e)}"}
+
+    def get_table_columns(self, table_name: str) -> Dict:
+        if not self._is_authorized():
+            return {"success": False, "message": "您没有权限", "columns": []}
+
+        model = self._get_model_by_name(table_name)
+        if not model:
+            return {"success": False, "message": f"未找到表: {table_name}", "columns": []}
+
+        mapper = inspect(model)
+        columns = []
+        for column in mapper.columns:
+            col_type = str(column.type)
+            columns.append({
+                "name": column.key,
+                "type": col_type,
+            })
+
+        return {"success": True, "columns": columns}
