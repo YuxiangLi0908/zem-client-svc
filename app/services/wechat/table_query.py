@@ -585,7 +585,7 @@ class TableQuery:
 
         try:
             query = self.db_session.query(model)
-            query = self._apply_conditions(query, model, conditions)
+            query, has_container_join = self._apply_conditions(query, model, table_name, conditions)
 
             if operation == "query":
                 records = query.limit(200).all()
@@ -609,17 +609,32 @@ class TableQuery:
                 }
 
             elif operation == "update":
-                count = query.count()
-                if count == 0:
-                    return {"success": False, "message": "未找到符合条件的记录"}
+                if has_container_join:
+                    sub_ids = query.with_entities(model.id).subquery()
+                    main_query = self.db_session.query(model).filter(model.id.in_(sub_ids))
+                    count = main_query.count()
+                    if count == 0:
+                        return {"success": False, "message": "未找到符合条件的记录"}
 
-                column_attr = getattr(model, update_field, None)
-                if column_attr is None:
-                    return {"success": False, "message": f"字段{update_field}不存在"}
+                    column_attr = getattr(model, update_field, None)
+                    if column_attr is None:
+                        return {"success": False, "message": f"字段{update_field}不存在"}
 
-                cast_value = self._cast_value(column_attr, update_value)
-                query.update({update_field: cast_value}, synchronize_session="fetch")
-                self.db_session.commit()
+                    cast_value = self._cast_value(column_attr, update_value)
+                    main_query.update({update_field: cast_value}, synchronize_session="fetch")
+                    self.db_session.commit()
+                else:
+                    count = query.count()
+                    if count == 0:
+                        return {"success": False, "message": "未找到符合条件的记录"}
+
+                    column_attr = getattr(model, update_field, None)
+                    if column_attr is None:
+                        return {"success": False, "message": f"字段{update_field}不存在"}
+
+                    cast_value = self._cast_value(column_attr, update_value)
+                    query.update({update_field: cast_value}, synchronize_session="fetch")
+                    self.db_session.commit()
 
                 return {
                     "success": True,
@@ -627,12 +642,20 @@ class TableQuery:
                 }
 
             elif operation == "delete":
-                count = query.count()
-                if count == 0:
-                    return {"success": False, "message": "未找到符合条件的记录"}
-
-                query.delete(synchronize_session="fetch")
-                self.db_session.commit()
+                if has_container_join:
+                    sub_ids = query.with_entities(model.id).subquery()
+                    main_query = self.db_session.query(model).filter(model.id.in_(sub_ids))
+                    count = main_query.count()
+                    if count == 0:
+                        return {"success": False, "message": "未找到符合条件的记录"}
+                    main_query.delete(synchronize_session="fetch")
+                    self.db_session.commit()
+                else:
+                    count = query.count()
+                    if count == 0:
+                        return {"success": False, "message": "未找到符合条件的记录"}
+                    query.delete(synchronize_session="fetch")
+                    self.db_session.commit()
 
                 return {
                     "success": True,
@@ -643,11 +666,20 @@ class TableQuery:
             self.db_session.rollback()
             return {"success": False, "message": f"操作失败: {str(e)}"}
 
-    def _apply_conditions(self, query, model, conditions: list):
+    def _apply_conditions(self, query, model, table_name: str, conditions: list):
+        has_container_join = False
+
         for cond in conditions:
             field_name = cond.get("field", "")
             operator = cond.get("operator", "=")
             value = cond.get("value", "")
+
+            if field_name == "container_number":
+                container_cond = self._apply_container_condition(query, model, table_name, operator, value)
+                if container_cond is not None:
+                    query = container_cond
+                    has_container_join = True
+                continue
 
             column_attr = getattr(model, field_name, None)
             if column_attr is None:
@@ -674,7 +706,56 @@ class TableQuery:
                 cast_value = self._cast_value(column_attr, value)
                 query = query.filter(column_attr <= cast_value)
 
-        return query
+        return query, has_container_join
+
+    def _apply_container_condition(self, query, model, table_name: str, operator: str, value: str):
+        config = self.TABLE_CONFIG.get(table_name, {})
+        join_type = config.get("container_join")
+
+        if not join_type:
+            if hasattr(model, "container_number_id"):
+                join_type = self.CONTAINER_JOIN_DIRECT
+            elif table_name == "Container":
+                if operator == "=":
+                    return query.filter(Container.container_number == value)
+                elif operator == "like":
+                    return query.filter(Container.container_number.ilike(f"%{value}%"))
+                return None
+            else:
+                return None
+
+        if join_type == self.CONTAINER_JOIN_DIRECT:
+            if operator == "=":
+                return query.join(Container, Container.id == model.container_number_id).filter(
+                    Container.container_number == value
+                )
+            elif operator == "like":
+                return query.join(Container, Container.id == model.container_number_id).filter(
+                    Container.container_number.ilike(f"%{value}%")
+                )
+        elif join_type == self.CONTAINER_JOIN_THROUGH_ORDER:
+            fk_map = {
+                "Retrieval": Order.retrieval_id_id,
+                "Offload": Order.offload_id_id,
+                "Vessel": Order.vessel_id_id,
+            }
+            order_fk = fk_map.get(table_name)
+            if not order_fk:
+                return None
+            if operator == "=":
+                return (
+                    query.join(Order, order_fk == model.id)
+                    .join(Container, Container.id == Order.container_number_id)
+                    .filter(Container.container_number == value)
+                )
+            elif operator == "like":
+                return (
+                    query.join(Order, order_fk == model.id)
+                    .join(Container, Container.id == Order.container_number_id)
+                    .filter(Container.container_number.ilike(f"%{value}%"))
+                )
+
+        return None
 
     def _cast_value(self, column_attr, value: str):
         try:
@@ -746,5 +827,12 @@ class TableQuery:
                 "name": column.key,
                 "type": col_type,
             })
+
+        config = self.TABLE_CONFIG.get(table_name, {})
+        join_type = config.get("container_join")
+        has_container_fk = hasattr(model, "container_number_id")
+
+        if join_type or has_container_fk or table_name == "Container":
+            columns.insert(0, {"name": "container_number", "type": "VIRTUAL"})
 
         return {"success": True, "columns": columns}
