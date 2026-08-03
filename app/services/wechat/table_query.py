@@ -13,6 +13,12 @@ from app.data_models.db.shipment import Shipment
 from app.data_models.db.fleet import Fleet
 from app.data_models.db.packing_list import PackingList
 from app.data_models.db.invoice_v2 import Invoicev2, InvoiceStatusv2, InvoiceItemv2
+from app.data_models.db.dropship import (
+    DropshipCargo,
+    DropshipInventory,
+    DropshipShipment,
+    DropshipShipmentDetail,
+)
 from app.data_models.wechat.order_tracking import TableQueryResponse
 
 
@@ -22,6 +28,7 @@ class TableQuery:
 
     CONTAINER_JOIN_DIRECT = "direct"
     CONTAINER_JOIN_THROUGH_ORDER = "through_order"
+    CONTAINER_JOIN_THROUGH_CARGO = "through_cargo"
 
     FK_DISPLAY_CONFIG = {
         "Order": {
@@ -58,6 +65,22 @@ class TableQuery:
         "InvoiceItemv2": {
             "container_number_id": {"model": Container, "display_field": "container_number", "label": "container_number"},
             "invoice_number_id": {"model": Invoicev2, "display_field": "invoice_number", "label": "invoice_number"},
+        },
+        "DropshipCargo": {
+            "container_id": {"model": Container, "display_field": "container_number", "label": "container_number"},
+            "order_id": {"model": Order, "display_field": "order_id", "label": "order_id"},
+            "warehouse_id": {"model": Warehouse, "display_field": "name", "label": "warehouse"},
+        },
+        "DropshipInventory": {
+            "cargo_id": {"model": DropshipCargo, "display_field": "shipping_mark", "label": "shipping_mark"},
+            "shipment_detail_id": {"model": DropshipShipmentDetail, "display_field": "id", "label": "shipment_detail_id"},
+        },
+        "DropshipShipment": {
+            "warehouse_id": {"model": Warehouse, "display_field": "name", "label": "warehouse"},
+        },
+        "DropshipShipmentDetail": {
+            "shipment_id": {"model": DropshipShipment, "display_field": "shipment_batch_number", "label": "shipment_batch_number"},
+            "cargo_id": {"model": DropshipCargo, "display_field": "shipping_mark", "label": "shipping_mark"},
         },
     }
 
@@ -186,6 +209,48 @@ class TableQuery:
                 {"name": "id", "label": "ID", "type": "integer"},
             ],
         },
+        "DropshipCargo": {
+            "model_module": "app.data_models.db.dropship",
+            "model_class": "DropshipCargo",
+            "container_join": CONTAINER_JOIN_DIRECT,
+            "container_fk_field": "container_id",
+            "search_fields": [
+                {"name": "shipping_mark", "label": "唛头", "type": "string"},
+                {"name": "container_number", "label": "柜号", "type": "string"},
+                {"name": "PO_ID", "label": "PO ID", "type": "string"},
+                {"name": "id", "label": "ID", "type": "integer"},
+            ],
+        },
+        "DropshipShipment": {
+            "model_module": "app.data_models.db.dropship",
+            "model_class": "DropshipShipment",
+            "search_fields": [
+                {"name": "shipment_batch_number", "label": "批次号", "type": "string"},
+                {"name": "status", "label": "状态", "type": "string"},
+                {"name": "id", "label": "ID", "type": "integer"},
+            ],
+        },
+        "DropshipShipmentDetail": {
+            "model_module": "app.data_models.db.dropship",
+            "model_class": "DropshipShipmentDetail",
+            "container_join": CONTAINER_JOIN_THROUGH_CARGO,
+            "container_fk_field": "cargo_id",
+            "search_fields": [
+                {"name": "container_number", "label": "柜号", "type": "string"},
+                {"name": "id", "label": "ID", "type": "integer"},
+            ],
+        },
+        "DropshipInventory": {
+            "model_module": "app.data_models.db.dropship",
+            "model_class": "DropshipInventory",
+            "container_join": CONTAINER_JOIN_THROUGH_CARGO,
+            "container_fk_field": "cargo_id",
+            "search_fields": [
+                {"name": "container_number", "label": "柜号", "type": "string"},
+                {"name": "transaction_type", "label": "操作类型", "type": "string"},
+                {"name": "id", "label": "ID", "type": "integer"},
+            ],
+        },
     }
 
     def __init__(self, user: Customer | AuthUser, db_session: Session) -> None:
@@ -272,9 +337,13 @@ class TableQuery:
         join_type = config.get("container_join")
 
         if join_type == self.CONTAINER_JOIN_DIRECT:
+            fk_field = config.get("container_fk_field", "container_number_id")
+            fk_attr = getattr(model, fk_field, None)
+            if fk_attr is None:
+                return []
             return (
                 self.db_session.query(model)
-                .join(Container, Container.id == model.container_number_id)
+                .join(Container, Container.id == fk_attr)
                 .filter(Container.container_number.ilike(f"%{search_value}%"))
                 .limit(50)
                 .all()
@@ -292,6 +361,19 @@ class TableQuery:
                 self.db_session.query(model)
                 .join(Order, order_fk == model.id)
                 .join(Container, Container.id == Order.container_number_id)
+                .filter(Container.container_number.ilike(f"%{search_value}%"))
+                .limit(50)
+                .all()
+            )
+        elif join_type == self.CONTAINER_JOIN_THROUGH_CARGO:
+            cargo_fk_field = config.get("container_fk_field", "cargo_id")
+            cargo_fk_attr = getattr(model, cargo_fk_field, None)
+            if cargo_fk_attr is None:
+                return []
+            return (
+                self.db_session.query(model)
+                .join(DropshipCargo, DropshipCargo.id == cargo_fk_attr)
+                .join(Container, Container.id == DropshipCargo.container_id)
                 .filter(Container.container_number.ilike(f"%{search_value}%"))
                 .limit(50)
                 .all()
@@ -713,7 +795,7 @@ class TableQuery:
         join_type = config.get("container_join")
 
         if not join_type:
-            if hasattr(model, "container_number_id"):
+            if hasattr(model, "container_number_id") or hasattr(model, "container_id"):
                 join_type = self.CONTAINER_JOIN_DIRECT
             elif table_name == "Container":
                 if operator == "=":
@@ -725,12 +807,16 @@ class TableQuery:
                 return None
 
         if join_type == self.CONTAINER_JOIN_DIRECT:
+            fk_field = config.get("container_fk_field", "container_number_id")
+            fk_attr = getattr(model, fk_field, None)
+            if fk_attr is None:
+                return None
             if operator == "=":
-                return query.join(Container, Container.id == model.container_number_id).filter(
+                return query.join(Container, Container.id == fk_attr).filter(
                     Container.container_number == value
                 )
             elif operator == "like":
-                return query.join(Container, Container.id == model.container_number_id).filter(
+                return query.join(Container, Container.id == fk_attr).filter(
                     Container.container_number.ilike(f"%{value}%")
                 )
         elif join_type == self.CONTAINER_JOIN_THROUGH_ORDER:
@@ -752,6 +838,23 @@ class TableQuery:
                 return (
                     query.join(Order, order_fk == model.id)
                     .join(Container, Container.id == Order.container_number_id)
+                    .filter(Container.container_number.ilike(f"%{value}%"))
+                )
+        elif join_type == self.CONTAINER_JOIN_THROUGH_CARGO:
+            cargo_fk_field = config.get("container_fk_field", "cargo_id")
+            cargo_fk_attr = getattr(model, cargo_fk_field, None)
+            if cargo_fk_attr is None:
+                return None
+            if operator == "=":
+                return (
+                    query.join(DropshipCargo, DropshipCargo.id == cargo_fk_attr)
+                    .join(Container, Container.id == DropshipCargo.container_id)
+                    .filter(Container.container_number == value)
+                )
+            elif operator == "like":
+                return (
+                    query.join(DropshipCargo, DropshipCargo.id == cargo_fk_attr)
+                    .join(Container, Container.id == DropshipCargo.container_id)
                     .filter(Container.container_number.ilike(f"%{value}%"))
                 )
 
@@ -830,7 +933,11 @@ class TableQuery:
 
         config = self.TABLE_CONFIG.get(table_name, {})
         join_type = config.get("container_join")
-        has_container_fk = hasattr(model, "container_number_id")
+        has_container_fk = (
+            hasattr(model, "container_number_id")
+            or hasattr(model, "container_id")
+            or hasattr(model, "cargo_id")
+        )
 
         if join_type or has_container_fk or table_name == "Container":
             columns.insert(0, {"name": "container_number", "type": "VIRTUAL"})
