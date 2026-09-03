@@ -5,6 +5,7 @@ from app.data_models.db.order import Order
 from app.data_models.db.quotation_master import QuotationMaster
 from app.data_models.db.fee_detail import FeeDetail
 from app.data_models.db.maersk_price_rate import MaerskPriceRate
+from app.data_models.db.multi_carrier_quote_history import MultiCarrierQuoteHistory
 from app.data_models.db.pallet import Pallet
 from app.data_models.db.pallet_exception import PalletException
 from app.data_models.db.packing_list import PackingList
@@ -24,6 +25,7 @@ __all__ = [
     "QuotationMaster",
     "FeeDetail",
     "MaerskPriceRate",
+    "MultiCarrierQuoteHistory",
     "Pallet",
     "PalletException",
     "PackingList",
