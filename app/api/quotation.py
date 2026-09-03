@@ -7,6 +7,9 @@ from pydantic import BaseModel
 import traceback
 import os
 import aiohttp
+import asyncio
+import json
+import math
 
 from app.services.db_session import db_session
 from app.services.user_auth import get_current_user
@@ -14,6 +17,7 @@ from app.data_models.db.user import Customer, AuthUser
 from app.data_models.db.quotation_master import QuotationMaster
 from app.data_models.db.fee_detail import FeeDetail
 from app.data_models.db.maersk_price_rate import MaerskPriceRate
+from app.data_models.db.multi_carrier_quote_history import MultiCarrierQuoteHistory
 
 router = APIRouter()
 
@@ -61,6 +65,72 @@ class MaerskQuotationResponse(BaseModel):
     success: bool
     data: Optional[Dict[str, Any]] = None
     message: Optional[str] = None
+
+
+class MultiCarrierLineItem(BaseModel):
+    description: str = "Pallet"
+    pieces: int
+    length: int
+    width: int
+    height: int
+    weight: int
+
+
+class MultiCarrierQuotationRequest(BaseModel):
+    originWarehouse: str
+    destinationWarehouse: str
+    pickupDate: str
+    quoteType: int = 1
+    carType: int = 1
+    originType: int = 3
+    originDetailAddress: str = ""
+    originCity: str
+    originState: str
+    originPostCode: str
+    destinationType: int = 1
+    destinationDetailAddress: str = ""
+    destinationCity: str
+    destinationState: str
+    destinationPostCode: str
+    freightClass: str = ""
+    declaredValue: float
+    commodityUnit: int = 11
+    palletType: int = 1
+    needLiftgate: bool = False
+    items: List[MultiCarrierLineItem]
+
+
+class MultiCarrierQuotationResponse(BaseModel):
+    success: bool
+    data: Optional[Dict[str, Any]] = None
+    message: Optional[str] = None
+
+
+@router.get("/multi_carrier_quote_options")
+async def multi_carrier_quote_options(
+    current_user: Customer | AuthUser = Depends(get_current_user),
+    db: Session = Depends(db_session.get_db),
+):
+    """Return the same active origin and FBA address options used by the warehouse UI."""
+    rows = db.execute(text("""
+        SELECT category, key, value
+        FROM warehouse_system_parameter
+        WHERE is_active = true
+          AND category IN ('ZEM仓库地址', 'FBA仓点')
+        ORDER BY sort_order, id
+    """)).mappings().all()
+    origins = []
+    destinations = {}
+    for row in rows:
+        try:
+            value = json.loads(row["value"])
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if row["category"] == "ZEM仓库地址" and isinstance(value, dict):
+            origins.append({"warehouse": row["key"], **value})
+        elif row["category"] == "FBA仓点" and isinstance(value, dict):
+            destinations[row["key"]] = value
+    return {"origins": origins, "destinations": destinations}
 
 
 @router.post("/query_quotation", response_model=QuotationResponse)
@@ -689,3 +759,185 @@ async def maersk_quotation(
             success=False,
             message=str(e)
         )
+
+
+def _freight_class(items: List[MultiCarrierLineItem]) -> str:
+    total_weight = sum(item.weight for item in items)
+    total_cube = sum(item.length * item.width * item.height / 1728 for item in items)
+    if total_cube <= 0:
+        raise ValueError("货物总体积必须大于 0")
+    density = total_weight / total_cube
+    density_classes = (
+        (50, "50"), (35, "55"), (30, "60"), (22.5, "65"),
+        (15, "70"), (13.5, "77.5"), (12, "85"), (10.5, "92.5"),
+        (9, "100"), (8, "110"), (7, "125"), (6, "150"),
+        (5, "175"), (4, "200"), (3, "250"), (2, "300"),
+        (1, "400"), (0, "500"),
+    )
+    return next(value for minimum, value in density_classes if density >= minimum)
+
+
+def _find_nested_uuid(value: Any) -> Optional[str]:
+    if isinstance(value, dict):
+        if value.get("uuid"):
+            return str(value["uuid"])
+        return _find_nested_uuid(value.get("data"))
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _apply_maersk_increase(payload: Any, multiplier: float) -> None:
+    """Apply the client-specific Maersk multiplier without changing other carriers."""
+    if isinstance(payload, dict):
+        if payload.get("TotalQuote") is not None:
+            payload["TotalQuote"] = round(float(payload["TotalQuote"]) * multiplier, 2)
+        if payload.get("Amount") is not None and "BillCode" in payload:
+            payload["Amount"] = round(float(payload["Amount"]) * multiplier, 2)
+        for child in payload.values():
+            _apply_maersk_increase(child, multiplier)
+    elif isinstance(payload, list):
+        for child in payload:
+            _apply_maersk_increase(child, multiplier)
+
+
+@router.post("/multi_carrier_quotation", response_model=MultiCarrierQuotationResponse)
+async def multi_carrier_quotation(
+    request: MultiCarrierQuotationRequest,
+    current_user: Customer | AuthUser = Depends(get_current_user),
+    db: Session = Depends(db_session.get_db),
+) -> MultiCarrierQuotationResponse:
+    """Query configured carriers through the shared rating gateway and save the history."""
+    try:
+        pickup_date = datetime.strptime(request.pickupDate, "%Y-%m-%d")
+        if not request.items:
+            raise ValueError("至少需要一条货物明细")
+        if request.declaredValue <= 0:
+            raise ValueError("申报价值必须大于 0")
+
+        normalized_items = []
+        for item in request.items:
+            values = {
+                "description": item.description or "Pallet",
+                "pieces": max(1, int(item.pieces)),
+                "length": math.ceil(item.length), "width": math.ceil(item.width),
+                "height": math.ceil(item.height), "weight": math.ceil(item.weight),
+            }
+            if min(values[name] for name in ("length", "width", "height", "weight")) <= 0:
+                raise ValueError("货物尺寸和重量必须大于 0")
+            normalized_items.append(values)
+
+        freight_class = request.freightClass.strip() or _freight_class(request.items)
+        serve_ids = [2] if request.needLiftgate else []
+        kakas_items = [{
+            "describe": item["description"], "commodityNum": item["pieces"],
+            "commodityUnit": request.commodityUnit, "consignNum": item["pieces"],
+            "palletType": request.palletType, "length": item["length"],
+            "width": item["width"], "height": item["height"], "weight": item["weight"],
+            "declaredValue": max(1, math.ceil(request.declaredValue)), "freightClass": freight_class,
+        } for item in normalized_items]
+
+        def address(prefix: str) -> Dict[str, Any]:
+            return {
+                "type": getattr(request, prefix + "Type"),
+                "detailAddress": getattr(request, prefix + "DetailAddress"),
+                "city": getattr(request, prefix + "City"),
+                "state": getattr(request, prefix + "State").upper(),
+                "postCode": getattr(request, prefix + "PostCode"),
+                "country": "US", "serveIds": serve_ids,
+            }
+
+        kakas_payload = {
+            "quoteType": request.quoteType, "pickupDate": request.pickupDate, "iu": 0,
+            "originalMsg": address("origin"), "destinationMsg": address("destination"),
+            "commodityList": kakas_items,
+        }
+        if request.quoteType == 2:
+            kakas_payload["carType"] = request.carType
+        gateway_payload = {
+            "carrier": "all",
+            "carrierPayloads": {
+                "maersk": {
+                    "shipDate": pickup_date.strftime("%m/%d/%Y"),
+                    "origin_zip": request.originPostCode,
+                    "dest_zip": request.destinationPostCode,
+                    "lineItems": normalized_items,
+                    "liftgate": "true" if request.needLiftgate else "false",
+                },
+                "kakas": kakas_payload,
+            },
+        }
+        gateway_base = os.environ.get(
+            "MAERSK_GATEWAY_URL",
+            "https://zem-maersk-gateway.kindmoss-a5050a64.eastus.azurecontainerapps.io",
+        ).rstrip("/")
+        api_key = os.environ.get("MAERSK_GATEWAY_API_KEY") or os.environ.get("MAERSK_API_KEY")
+        if not api_key:
+            return MultiCarrierQuotationResponse(success=False, message="未配置网关 API Key")
+
+        headers = {"Content-Type": "application/json", "x-api-key": api_key}
+        timeout = aiohttp.ClientTimeout(total=50, connect=10, sock_connect=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            result = None
+            for attempt in range(3):
+                try:
+                    async with session.post(f"{gateway_base}/rating", json=gateway_payload, headers=headers) as response:
+                        response_text = await response.text()
+                        if response.status != 200:
+                            return MultiCarrierQuotationResponse(
+                                success=False, message=f"公共询价失败: {response.status} - {response_text}"
+                            )
+                        result = json.loads(response_text)
+                        break
+                except (aiohttp.ClientConnectionError, asyncio.TimeoutError):
+                    if attempt == 2:
+                        return MultiCarrierQuotationResponse(
+                            success=False, message="询价网关连接超时，已自动重试 3 次，请稍后重试"
+                        )
+                    await asyncio.sleep(attempt + 1)
+
+            carrier_results = result.setdefault("results", {})
+            kakas_result = carrier_results.get("kakas", {})
+            kakas_body = kakas_result.get("data") if kakas_result.get("status") == "success" else None
+            quote_uuid = _find_nested_uuid(kakas_body)
+            if quote_uuid:
+                for _ in range(8):
+                    async with session.get(
+                        f"{gateway_base}/rating", params={"carrier": "kakas", "uuid": quote_uuid}, headers=headers
+                    ) as quote_response:
+                        if quote_response.status != 200:
+                            break
+                        quote_data = await quote_response.json()
+                        kakas_result["data"] = quote_data
+                        content = quote_data.get("data", quote_data) if isinstance(quote_data, dict) else {}
+                        if content.get("finish") or content.get("rates"):
+                            break
+                    await asyncio.sleep(1)
+
+        result["freightClass"] = freight_class
+        _apply_maersk_increase(
+            carrier_results.get("maersk", {}), get_maersk_increase_percentage(db, current_user)
+        )
+        car_type_labels = {
+            1: "53尺厢式货车", 2: "冷链车", 3: "48尺平板车",
+            10: "26尺小车", 12: "26尺小车带尾板", 13: "快速拖车",
+        }
+        db.add(MultiCarrierQuoteHistory(
+            origin_warehouse=request.originWarehouse.strip(),
+            destination_warehouse=request.destinationWarehouse.strip(), pickup_date=pickup_date.date(),
+            quote_type="LTL" if request.quoteType == 1 else "FTL",
+            ftl_car_type=car_type_labels.get(request.carType, str(request.carType)) if request.quoteType == 2 else "",
+            freight_class=freight_class, declared_value=request.declaredValue,
+            pallet_items=normalized_items, maersk_quotes=carrier_results.get("maersk", {}),
+            kakas_quotes=carrier_results.get("kakas", {}), abf_quotes=carrier_results.get("abf", {}),
+            operator_id=current_user.id if isinstance(current_user, AuthUser) else None,
+        ))
+        db.commit()
+        return MultiCarrierQuotationResponse(success=True, data=result)
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        db.rollback()
+        return MultiCarrierQuotationResponse(success=False, message=f"询价参数错误: {exc}")
+    except Exception as exc:
+        db.rollback()
+        print(traceback.format_exc())
+        return MultiCarrierQuotationResponse(success=False, message=str(exc))
